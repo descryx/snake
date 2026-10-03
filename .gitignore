@@ -1,2 +1,5 @@
 build/
 .direnv/
+*.o
+.cache/
+
