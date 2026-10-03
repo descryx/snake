@@ -51,24 +51,24 @@ void addUnit(std::vector<Vector2> &gridUnitPos, Vector2 unitSize, MovementMode &
     case MovementMode::moveUp:
         gridUnitPos.push_back(
             {gridUnitPos[gridUnitPos.size() - 1].x,
-             gridUnitPos[gridUnitPos.size() - 1].y - (gridUnitPos.size() * unitSize.y)});
+             gridUnitPos[gridUnitPos.size() - 1].y - (gridUnitPos.size() + unitSize.y)});
         break;
 
     case MovementMode::moveDown:
         gridUnitPos.push_back(
             {gridUnitPos[gridUnitPos.size() - 1].x,
-             gridUnitPos[gridUnitPos.size() - 1].y + (gridUnitPos.size() * unitSize.y)});
+             gridUnitPos[gridUnitPos.size() - 1].y + (gridUnitPos.size() + unitSize.y)});
         break;
 
     case MovementMode::moveLeft:
         gridUnitPos.push_back(
-            {gridUnitPos[gridUnitPos.size() - 1].x - (gridUnitPos.size() * unitSize.x),
+            {gridUnitPos[gridUnitPos.size() - 1].x - (gridUnitPos.size() + unitSize.x),
              gridUnitPos[gridUnitPos.size() - 1].y});
         break;
 
     case MovementMode::moveRight:
         gridUnitPos.push_back(
-            {gridUnitPos[gridUnitPos.size() - 1].x + (gridUnitPos.size() * unitSize.x),
+            {gridUnitPos[gridUnitPos.size() - 1].x + (gridUnitPos.size() + unitSize.x),
              gridUnitPos[gridUnitPos.size() - 1].y});
         break;
     }
@@ -94,89 +94,61 @@ int main(void) {
     float cellWidth = (windowSize.x / collumns);
     float cellHeight = (windowSize.y / rows);
     std::vector<Vector2> gridUnitPos;
+    std::vector<Vector3> turnTile;
+    std::vector<MovementMode> tileMode;
 
     // NOTE: initial spawn of 1st head at ~middle of window
-    gridUnitPos.push_back({roundf((collumns / 2)) * cellWidth, roundf((rows / 2)) * cellHeight});
+    gridUnitPos.push_back({roundf(collumns / 2) * cellWidth, roundf(rows / 2) * cellHeight});
 
-    float speed = 50.0f;
+    float speed = 25.0f;
     bool dead = false;
-    Vector2 unitSize = {roundf((cellWidth / 100) * 75), roundf((cellHeight / 100) * 75)};
+    Vector2 unitSize = {roundf(cellWidth / 100 * 75), roundf(cellHeight / 100 * 75)};
 
-    // FIX: important: read the corrections.
-    // TODO: implement so that while it moves i calculate for unit/units (idk yet)
-    //       the grid position (eg. 16 and 9 grid) and if a unit is at a turn grid tile
-    //       it turns. needed for that to work is a vector that stored the tiles that are
-    //       considered turn tiles.
-    //       need to store what tile and what direction it leads eg: tile: (7 * 3), dir: up
-    //       and if any unit is on one of those tiles it turns in said direction.
+    // FIX: a 16x9 grid playfield, but units move smoothly in pixels (not cell-by-cell).
     //
-    //       FIX: 7 * 3 and 3 * 7 do collide, find another way to figure out grid coordinate
-    //            eg (width 16 height 9) (coll 3 row 7):
-    //            formula === ((row-1)*width)+coll
-    //            ((7-1)*16)+3 == 99
-    //            ((3-1)*16)+7 == 39
-    //            name it tileId or smth like that
+    // NOTE:
+    //   Segment { Vector2 pos; MovementMode dir; }       // every unit has its OWN direction
+    //   Turn    { int col, row; MovementMode dir; int passed = 0; }
+    //   (Store col and row separately. Multiplying them collides: 7*3 == 3*7.
+    //   If you want one number: tileId = row * columns + col, 0-based.)
     //
-    // TODO: recap of waht is to add: vector with tiel num and dir to turn to.
-    //      calculation of the grid tile num. eg we have pos  x 1784, y 888.
-    //      we need to take the cellHeight and cellWidth and look if the body is in the center
-    //      of the cell. go and divide the x and y with height and width. we get a float number
-    //      of the grid cell, but we need to round it to the bigger natural number.
-    //      do not round down. if we get 8.2 we round to 9, because we are moving forward the
-    //      whole time and need to see next tile we can turn at. past tiles are useless.
-    //      after calculated witch tile we will turn at, upon arriving at that tile we see
-    //      what last input was and turn acording.
-    //      after this we store the tile at a vector via push_back as a number
-    //      of the multiplication of the rounded x and y results we get, and the direction that
-    //      we turned to.
-    //      using a for loop we make each head check if it has arrived at that tile and if it has
-    //      we turn that head. once the last head has turned we delete that tile from the vector.
-    //      important to mention that (i forgot)
+    // TODO:
+    //  WHEN THE PLAYER TURNS THE HEAD
+    //   1. Find the NEXT tile the head will reach along its current axis of movement:
+    //        moving + direction (right/down) -> ceil
+    //        moving - direction (left/up)    -> floor
+    //      Only round the axis you are moving along. The other axis is already on a grid line.
+    //   2. push_back a Turn { col, row, newDir, passed = 0 }.
     //
-    //      FIX: only round up the axis you are moving along!
-    //           if you round up x while moving y it could lead to problems,
-    //           theoreticaly it should not since you always stay at rounded numbers
-    //           for the other axis, but safe is safe.
-    //           also, if moving in -dir you should round down, via floor
-    //           round = up
-    //           floor = down
+    // TODO:
+    // EVERY FRAME, FOR EACH SEGMENT i
+    //   1. Target = the first Turn in the list with passed == i
+    //      (segments reach tiles in order, so passed == "how many segments already went through").
+    //   2. step = speed * GetFrameTime().
+    //      If the segment is within +-step/2 of the tile's position on its moving axis:
+    //        - snap pos to the tile position
+    //        - seg.dir = turn.dir
+    //        - turn.passed++
+    //      Window of +-step/2 guarantees exactly one frame lands inside it.
+    //   3. Move the segment ONCE, using seg.dir (never the head's dir, never inside the turn loop).
     //
-    //      NOTE: also pay attentino to the fact the coordinate
-    //            is not the real center of the square
+    // TODO:
+    // AFTER THE LOOP
+    //   Remove turns where passed == snake.size() (erase-remove, never erase while iterating).
     //
-    // TODO: calculations:
-    //       tile number: (x or y pixel pos) / (x or y cell width) for each seperate (x and y)
-    //       !!! important to round to the next bigger whole number
-    //       ...
-    //       actuall tile: result of tile numbers multiplied
+    // TODO:
+    // ADD A SEGMENT
+    //   Spawn one cell behind the tail, opposite the TAIL's dir, and copy the tail's dir.
+    //   (Edge case to think about: pending turns the new segment still has to pass.)
     //
-    // TODO: to make a valid addition function, we need to grab the last snake unit we have and
-    //       coresponding to the moving direciton add it behind the last unit and make it move
-    //       in the same direction the last unit moves.
-    //       each unit needs to have a seperate check if they have already apssed/arrived at a
-    //       certain turning point tile.
-    //       for that we can add a 3rd storing point to the tile where it coundts witch units
-    //       already passed the tile to figure out when to "die" aka remove itself out of the
-    //       list of tiles that make you turn.
-    //       or i could make the units count waht tiles they pased at already. althought it
-    //       feels a bit overcomplicated for no reason. having to store the units at 1 place
-    //       for a tile is easier than having 10 different units remember each at least 1 tile.
-    //       tile with 3 info fields it is.
-    //
-    //       FIX: dont make them target the real center of a tile, do: if close to tile middle
-    //       turn at tile middle.
-    //       by close enought i mean a window to turn that is big enought so that the frames
-    //       let it even happen.
-    //       a safe rule is a window of ±step/2,
-    //       where step = speed * dt. Consecutive positions are step apart,
-    //       so exactly one frame lands inside:
-    //
-    //
-    // NOTE: the reason i use the grid and screen coordinates is to provide the easy playfield of
-    //       a grid while still keeping the smoothnes of a sluently moving snake.
+    // NOTE:
+    //   - pos is the top-left of the drawn rect, NOT the true center of the cell.
+    //     The unit is 75% of the cell, so offset by (cell - unit) / 2 if you want it centered.
+    //   - x uses cellWidth, y uses cellHeight (currently y uses cellWidth in two places).
+    //   - Why grid + pixel coordinates: easy grid logic, smooth movement.ping the smoothnes of a
+    //   sluently moving snake.
 
     while (!WindowShouldClose()) {
-
         if (IsKeyPressed(KEY_Q)) {
             break;
         }
@@ -186,9 +158,73 @@ int main(void) {
         }
 
         if (IsWindowFocused() && !dead) {
+
+            if (moveKeys(currentMode)) {
+                tileMode.push_back(currentMode);
+                if (currentMode == MovementMode::moveUp) { // TODO: make back into 1 liner
+                    Vector2 snapTile = {gridUnitPos[0].x / cellWidth,
+                                        roundf(gridUnitPos[0].y / cellHeight)};
+                    turnTile.push_back({snapTile.x, snapTile.y, 0});
+                }
+                if (currentMode == MovementMode::moveRight) {
+                    Vector2 snapTile = {roundf(gridUnitPos[0].x / cellWidth),
+                                        gridUnitPos[0].y / cellHeight};
+                    turnTile.push_back({snapTile.x, snapTile.y, 0});
+                }
+                if (currentMode == MovementMode::moveDown) {
+                    Vector2 snapTile = {gridUnitPos[0].x / cellWidth,
+                                        floorf(gridUnitPos[0].y / cellHeight)};
+                    turnTile.push_back({snapTile.x, snapTile.y, 0});
+                }
+                if (currentMode == MovementMode::moveLeft) {
+                    Vector2 snapTile = {floorf(gridUnitPos[0].x / cellWidth),
+                                        gridUnitPos[0].y / cellHeight};
+                    turnTile.push_back({snapTile.x, snapTile.y, 0});
+                }
+            }
+            // FIX: IMPORTANT: refer to claude chat about +- step/2 and restruct
             for (Vector2 &vec2 : gridUnitPos) {
-                moveKeys(currentMode);
-                moveSpeed(vec2, currentMode, speed);
+                for (Vector3 &tileVec3 : turnTile) {
+                    // TODO: need to make sure if only check for
+                    // the unit that is behind the last turned unit
+                    if (vec2.x >= tileVec3.x * cellWidth &&
+                        // FIX: currently this looks for a unit
+                        // and then proceeds to compare it with every turn tile
+                        // NEED: see how many units pased the tile (needs to be tile dependent so
+                        // the tile tracks the amount of passed units)
+                        // and eg. if passed 0 then compare the unit 0 only with this tile.
+                        // another eg. if passed 6 then compare unit 6 to this specific tile.
+                        // if tile 0 has eg. 8 passed the other 8 need to target the next tile if
+                        // there is one. after it has passed a tile it needs to moveSpeed into the
+                        // direction it got targeted by the tile.
+                        // need to make loop that loops the moveSpeed for each tile.
+                        //
+                        // TODO: add: per units direcition
+                        currentMode == MovementMode::moveRight) {
+                        vec2.x = tileVec3.x * cellWidth;
+                        tileVec3.z += 1;
+                    }
+                    if (vec2.x <= tileVec3.x * cellWidth && currentMode == MovementMode::moveLeft) {
+                        vec2.x = tileVec3.x * cellWidth;
+                        tileVec3.z += 1;
+                    }
+                    if (vec2.y >= tileVec3.y * cellHeight && currentMode == MovementMode::moveUp) {
+                        vec2.y = tileVec3.y * cellHeight;
+                        tileVec3.z += 1;
+                    }
+                    if (vec2.y <= tileVec3.y * cellHeight &&
+                        currentMode == MovementMode::moveDown) {
+                        vec2.y = tileVec3.y * cellHeight;
+                        tileVec3.z += 1;
+                    }
+                    if (tileVec3.z == gridUnitPos.size()) {
+                        turnTile.erase(turnTile.begin());
+                        // FIX:Collect finished tiles and erase after the loop (erase-remove idiom)
+                        // basicaly: move out of loop to avoid ub
+                    }
+                    moveSpeed(vec2, tileMode[0], speed); // FIX: figure out witch and how to use
+                }
+                moveSpeed(vec2, currentMode, speed); // FIX: same
 
                 // is_oob(vec2, gridSize, dead); // FIX:
             }
