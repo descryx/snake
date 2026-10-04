@@ -76,9 +76,13 @@ void addUnit(std::vector<Vector2> &gridUnitPos, Vector2 unitSize, MovementMode &
     }
 }
 
-void is_oob(Vector2 &gridUnitPos, Vector2 &gridSize, bool &dead) {
-    if (gridUnitPos.x > gridSize.x || gridUnitPos.x < 0 || gridUnitPos.y > gridSize.y ||
-        gridUnitPos.y < 0) {
+void is_oob(const std::vector<Vector2> &gridUnitPos, const Vector2 &windowSize, bool &dead,
+            const Vector2 &unitSize) {
+    if (gridUnitPos[0].x + unitSize.x >
+            windowSize.x || // FIX: no fucking idea why the one affect another
+        gridUnitPos[0].x + (unitSize.x / 76 * 100) < 0 ||
+        gridUnitPos[0].y + unitSize.y > windowSize.y ||
+        gridUnitPos[0].y + (unitSize.y / 75 * 100) < 0) {
         dead = true;
     }
 }
@@ -126,20 +130,22 @@ int main(void) {
     SetTargetFPS(60);
 
     // NOTE: window dependent
-    int collumns = 16;
-    int rows = 9;
+    float collumns = 16.0f;
+    float rows = 9.0f;
     float cellWidth = (windowSize.x / collumns);
     float cellHeight = (windowSize.y / rows);
     std::vector<Vector2> gridUnitPos;
     Vector2 targetCell = {0, 0};
     Vector2 cellPos = {0, 0};
+    bool turned = true;
 
     // NOTE: initial spawn of 1st head at ~middle of window
     gridUnitPos.push_back({roundf(collumns / 2) * cellWidth, roundf(rows / 2) * cellHeight});
 
-    float speed = 25.0f;
+    float speed = 10.0f;
     bool dead = false;
     Vector2 unitSize = {roundf(cellWidth / 100 * 75), roundf(cellHeight / 100 * 75)};
+    Vector2 unitGapFromLines = {(cellWidth - unitSize.x) / 2, (cellHeight - unitSize.y) / 2};
 
     while (!WindowShouldClose()) {
         if (IsKeyPressed(KEY_Q)) {
@@ -149,36 +155,82 @@ int main(void) {
         if (IsKeyPressed(KEY_A)) {
             addUnit(gridUnitPos, unitSize, currentMode); // NOTE: forget about this shit for a while
         }
+        if (IsKeyPressed(KEY_MINUS)) {
+            speed -= 10;
+        } else if (IsKeyPressed(KEY_EQUAL)) {
+            speed += 10;
+        }
 
         if (IsWindowFocused() && !dead) {
-            cellPos = {
-                gridUnitPos[0].x / cellWidth,
-                gridUnitPos[0].y / cellHeight,
-            };
+            if (turned) {
+                cellPos = {
+                    gridUnitPos[0].x / cellWidth,
+                    gridUnitPos[0].y / cellHeight,
+                };
 
-            moveKeys(pendingMode);
+                moveKeys(pendingMode);
+            }
 
             if (currentMode != pendingMode) {
-                switch (currentMode) {
-                case MovementMode::moveDown:
-                    cellPos.y += 1;
+                turned = false;
+                // switch (currentMode) {
+                // case MovementMode::moveDown: // FIX: this thing snaps sometimes unnecessarry +1
+                //     targetCell = {cellWidth * (ceilf(cellPos.x)), cellHeight *
+                //     (ceilf(cellPos.y))};
+                //
+                // case MovementMode::moveUp:
+                //     targetCell = {cellWidth * (floorf(cellPos.x)),
+                //                   cellHeight * (floorf(cellPos.y))};
+                //
+                // case MovementMode::moveRight:
+                //     targetCell = {cellWidth * (ceilf(cellPos.x)), cellHeight *
+                //     (ceilf(cellPos.y))};
+                //
+                // case MovementMode::moveLeft:
+                //     targetCell = {cellWidth * (floorf(cellPos.x)),
+                //                   cellHeight * (floorf(cellPos.y))};
+                // }
 
-                case MovementMode::moveUp:
-                    cellPos.y -= 1;
-
-                case MovementMode::moveRight:
-                    cellPos.x += 1;
-
-                case MovementMode::moveLeft:
-                    cellPos.x -= 1;
+                if (currentMode == MovementMode::moveDown) {
+                    targetCell = {cellWidth * (ceilf(cellPos.x)), cellHeight * (ceilf(cellPos.y))};
+                    if (gridUnitPos[0].y > targetCell.y) {
+                        gridUnitPos[0] = {targetCell.x, targetCell.y};
+                        turned = true;
+                        currentMode = pendingMode;
+                    }
                 }
-                targetCell = {cellWidth * (roundf(cellPos.x)), cellHeight * (roundf(cellPos.y))};
-                gridUnitPos[0] = {targetCell.x, targetCell.y};
-                currentMode = pendingMode;
+                if (currentMode == MovementMode::moveUp) {
+                    targetCell = {cellWidth * (floorf(cellPos.x)),
+                                  cellHeight * (floorf(cellPos.y))};
+                    if (gridUnitPos[0].y < targetCell.y) {
+                        gridUnitPos[0] = {targetCell.x, targetCell.y};
+                        turned = true;
+                        currentMode = pendingMode;
+                    }
+                }
+                if (currentMode == MovementMode::moveRight) {
+                    targetCell = {cellWidth * (ceilf(cellPos.x)), cellHeight * (ceilf(cellPos.y))};
+                    if (gridUnitPos[0].x > targetCell.x) {
+                        gridUnitPos[0] = {targetCell.x, targetCell.y};
+                        turned = true;
+                        currentMode = pendingMode;
+                    }
+                }
+                if (currentMode == MovementMode::moveLeft) {
+                    targetCell = {cellWidth * (floorf(cellPos.x)),
+                                  cellHeight * (floorf(cellPos.y))};
+                    if (gridUnitPos[0].x < targetCell.x) {
+                        gridUnitPos[0] = {targetCell.x, targetCell.y};
+                        turned = true;
+                        currentMode = pendingMode;
+                    }
+                }
             }
             moveSpeed(gridUnitPos[0], currentMode, speed);
 
-            // is_oob(gridUnitPos, gridSize, dead); // FIX:
+            is_oob(gridUnitPos, windowSize, dead,
+                   unitSize); // FIX: one hitbox calc affects another, either one + or - achises
+                              // work at a time
         }
 
         //----------------------------------------------------------------------------------
@@ -192,7 +244,8 @@ int main(void) {
 
         } else {
             for ([[maybe_unused]] Vector2 vec2 : gridUnitPos) {
-                DrawRectangle(vec2.x, vec2.y, unitSize.x, unitSize.y, RED);
+                DrawRectangle(vec2.x + unitGapFromLines.x, vec2.y + unitGapFromLines.y, unitSize.x,
+                              unitSize.y, RED);
 
                 // NOTE: this is the bounding corner the coordinate of the unit
                 // debug slop
