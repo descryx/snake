@@ -150,7 +150,6 @@ int main(void) {
             addUnit(gridUnitPos, unitSize, currentMode); // NOTE: forget about this shit for a while
         }
 
-        // TODO: GOAL: cube moves on grid. only 1
         if (IsWindowFocused() && !dead) {
             cellPos = {
                 gridUnitPos[0].x / cellWidth,
@@ -160,26 +159,20 @@ int main(void) {
             moveKeys(pendingMode);
 
             if (currentMode != pendingMode) {
-                if (roundf(gridUnitPos[0].y / cellHeight) >= roundf(cellPos.y) &&
-                    currentMode == MovementMode::moveDown) {
-                    targetCell = {cellWidth * (roundf(cellPos.x)),
-                                  cellHeight * (roundf(cellPos.y) + 1)};
+                switch (currentMode) {
+                case MovementMode::moveDown:
+                    cellPos.y += 1;
+
+                case MovementMode::moveUp:
+                    cellPos.y -= 1;
+
+                case MovementMode::moveRight:
+                    cellPos.x += 1;
+
+                case MovementMode::moveLeft:
+                    cellPos.x -= 1;
                 }
-                if (floorf(gridUnitPos[0].y / cellHeight) <= floorf(cellPos.y) &&
-                    currentMode == MovementMode::moveUp) {
-                    targetCell = {cellWidth * (floorf(cellPos.x)),
-                                  cellHeight * (floorf(cellPos.y) - 1)};
-                }
-                if (roundf(gridUnitPos[0].x / cellWidth) >= roundf(cellPos.x) &&
-                    currentMode == MovementMode::moveRight) {
-                    targetCell = {cellWidth * (roundf(cellPos.x) + 1),
-                                  cellHeight * (roundf(cellPos.y))};
-                }
-                if (floorf(gridUnitPos[0].x / cellWidth) <= floorf(cellPos.x) &&
-                    currentMode == MovementMode::moveLeft) {
-                    targetCell = {cellWidth * (floorf(cellPos.x) - 1),
-                                  cellHeight * (floorf(cellPos.y))};
-                }
+                targetCell = {cellWidth * (roundf(cellPos.x)), cellHeight * (roundf(cellPos.y))};
                 gridUnitPos[0] = {targetCell.x, targetCell.y};
                 currentMode = pendingMode;
             }
