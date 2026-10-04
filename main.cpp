@@ -1,9 +1,11 @@
 #include "raylib.h"
 #include <cmath>
+#include <string>
 #include <vector>
 
 enum class MovementMode { moveUp, moveDown, moveLeft, moveRight };
 MovementMode currentMode = MovementMode::moveRight;
+MovementMode pendingMode = MovementMode::moveRight;
 
 bool moveKeys(MovementMode &currentMode) {
     if ((IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_K)) && (currentMode != MovementMode::moveDown)) {
@@ -80,6 +82,41 @@ void is_oob(Vector2 &gridUnitPos, Vector2 &gridSize, bool &dead) {
         dead = true;
     }
 }
+void drawGrid(const float &collumns, const float &rows, const float &cellWidth,
+              const float &cellHeight) {
+    for (int i = 0; i <= collumns; i++) { // FIX: make it draw the missing edge line
+        DrawLineV({i * cellWidth, 0}, {i * cellWidth, rows * cellHeight}, PINK);
+    }
+    for (int i = 0; i <= rows; i++) {
+        DrawLineV({0, i * cellHeight}, {collumns * cellWidth, i * cellHeight}, PINK);
+    }
+}
+
+const char *modeName(MovementMode m) {
+    switch (m) {
+    case MovementMode::moveUp:
+        return "up";
+    case MovementMode::moveDown:
+        return "down";
+    case MovementMode::moveLeft:
+        return "left";
+    case MovementMode::moveRight:
+        return "right";
+    }
+    return "?";
+}
+void debugInfo(const MovementMode &currentMode, const MovementMode &pendingMode, const float &speed,
+               const std::vector<Vector2> &gridUnitPos, const Vector2 &targetCell,
+               const Vector2 &cellPos) {
+    DrawText(TextFormat("current:  %s\npending: %s", modeName(currentMode), modeName(pendingMode)),
+             50, 50, 18, GREEN);
+    DrawText(TextFormat("speed: %f", speed), 50, 100, 18, GREEN);
+    DrawText(TextFormat("UnitPos \nX: %f\nY: %f", gridUnitPos[0].x, gridUnitPos[0].y), 50, 150, 18,
+             GREEN);
+    DrawText(TextFormat("cellPos: X = %f\nY = %f\nnewTile: X = %f\nY = %f", cellPos.x, cellPos.y,
+                        targetCell.x, targetCell.y),
+             50, 250, 18, GREEN);
+}
 
 int main(void) {
 
@@ -94,8 +131,8 @@ int main(void) {
     float cellWidth = (windowSize.x / collumns);
     float cellHeight = (windowSize.y / rows);
     std::vector<Vector2> gridUnitPos;
-    std::vector<Vector3> turnTile;
-    std::vector<MovementMode> tileMode;
+    Vector2 targetCell = {0, 0};
+    Vector2 cellPos = {0, 0};
 
     // NOTE: initial spawn of 1st head at ~middle of window
     gridUnitPos.push_back({roundf(collumns / 2) * cellWidth, roundf(rows / 2) * cellHeight});
@@ -104,130 +141,51 @@ int main(void) {
     bool dead = false;
     Vector2 unitSize = {roundf(cellWidth / 100 * 75), roundf(cellHeight / 100 * 75)};
 
-    // FIX: a 16x9 grid playfield, but units move smoothly in pixels (not cell-by-cell).
-    //
-    // NOTE:
-    //   Segment { Vector2 pos; MovementMode dir; }       // every unit has its OWN direction
-    //   Turn    { int col, row; MovementMode dir; int passed = 0; }
-    //   (Store col and row separately. Multiplying them collides: 7*3 == 3*7.
-    //   If you want one number: tileId = row * columns + col, 0-based.)
-    //
-    // TODO:
-    //  WHEN THE PLAYER TURNS THE HEAD
-    //   1. Find the NEXT tile the head will reach along its current axis of movement:
-    //        moving + direction (right/down) -> ceil
-    //        moving - direction (left/up)    -> floor
-    //      Only round the axis you are moving along. The other axis is already on a grid line.
-    //   2. push_back a Turn { col, row, newDir, passed = 0 }.
-    //
-    // TODO:
-    // EVERY FRAME, FOR EACH SEGMENT i
-    //   1. Target = the first Turn in the list with passed == i
-    //      (segments reach tiles in order, so passed == "how many segments already went through").
-    //   2. step = speed * GetFrameTime().
-    //      If the segment is within +-step/2 of the tile's position on its moving axis:
-    //        - snap pos to the tile position
-    //        - seg.dir = turn.dir
-    //        - turn.passed++
-    //      Window of +-step/2 guarantees exactly one frame lands inside it.
-    //   3. Move the segment ONCE, using seg.dir (never the head's dir, never inside the turn loop).
-    //
-    // TODO:
-    // AFTER THE LOOP
-    //   Remove turns where passed == snake.size() (erase-remove, never erase while iterating).
-    //
-    // TODO:
-    // ADD A SEGMENT
-    //   Spawn one cell behind the tail, opposite the TAIL's dir, and copy the tail's dir.
-    //   (Edge case to think about: pending turns the new segment still has to pass.)
-    //
-    // NOTE:
-    //   - pos is the top-left of the drawn rect, NOT the true center of the cell.
-    //     The unit is 75% of the cell, so offset by (cell - unit) / 2 if you want it centered.
-    //   - x uses cellWidth, y uses cellHeight (currently y uses cellWidth in two places).
-    //   - Why grid + pixel coordinates: easy grid logic, smooth movement.ping the smoothnes of a
-    //   sluently moving snake.
-
     while (!WindowShouldClose()) {
         if (IsKeyPressed(KEY_Q)) {
             break;
         }
 
         if (IsKeyPressed(KEY_A)) {
-            addUnit(gridUnitPos, unitSize, currentMode);
+            addUnit(gridUnitPos, unitSize, currentMode); // NOTE: forget about this shit for a while
         }
 
+        // TODO: GOAL: cube moves on grid. only 1
         if (IsWindowFocused() && !dead) {
+            cellPos = {
+                gridUnitPos[0].x / cellWidth,
+                gridUnitPos[0].y / cellHeight,
+            };
 
-            if (moveKeys(currentMode)) {
-                tileMode.push_back(currentMode);
-                if (currentMode == MovementMode::moveUp) { // TODO: make back into 1 liner
-                    Vector2 snapTile = {gridUnitPos[0].x / cellWidth,
-                                        roundf(gridUnitPos[0].y / cellHeight)};
-                    turnTile.push_back({snapTile.x, snapTile.y, 0});
-                }
-                if (currentMode == MovementMode::moveRight) {
-                    Vector2 snapTile = {roundf(gridUnitPos[0].x / cellWidth),
-                                        gridUnitPos[0].y / cellHeight};
-                    turnTile.push_back({snapTile.x, snapTile.y, 0});
-                }
-                if (currentMode == MovementMode::moveDown) {
-                    Vector2 snapTile = {gridUnitPos[0].x / cellWidth,
-                                        floorf(gridUnitPos[0].y / cellHeight)};
-                    turnTile.push_back({snapTile.x, snapTile.y, 0});
-                }
-                if (currentMode == MovementMode::moveLeft) {
-                    Vector2 snapTile = {floorf(gridUnitPos[0].x / cellWidth),
-                                        gridUnitPos[0].y / cellHeight};
-                    turnTile.push_back({snapTile.x, snapTile.y, 0});
-                }
-            }
-            // FIX: IMPORTANT: refer to claude chat about +- step/2 and restruct
-            for (Vector2 &vec2 : gridUnitPos) {
-                for (Vector3 &tileVec3 : turnTile) {
-                    // TODO: need to make sure if only check for
-                    // the unit that is behind the last turned unit
-                    if (vec2.x >= tileVec3.x * cellWidth &&
-                        // FIX: currently this looks for a unit
-                        // and then proceeds to compare it with every turn tile
-                        // NEED: see how many units pased the tile (needs to be tile dependent so
-                        // the tile tracks the amount of passed units)
-                        // and eg. if passed 0 then compare the unit 0 only with this tile.
-                        // another eg. if passed 6 then compare unit 6 to this specific tile.
-                        // if tile 0 has eg. 8 passed the other 8 need to target the next tile if
-                        // there is one. after it has passed a tile it needs to moveSpeed into the
-                        // direction it got targeted by the tile.
-                        // need to make loop that loops the moveSpeed for each tile.
-                        //
-                        // TODO: add: per units direcition
-                        currentMode == MovementMode::moveRight) {
-                        vec2.x = tileVec3.x * cellWidth;
-                        tileVec3.z += 1;
-                    }
-                    if (vec2.x <= tileVec3.x * cellWidth && currentMode == MovementMode::moveLeft) {
-                        vec2.x = tileVec3.x * cellWidth;
-                        tileVec3.z += 1;
-                    }
-                    if (vec2.y >= tileVec3.y * cellHeight && currentMode == MovementMode::moveUp) {
-                        vec2.y = tileVec3.y * cellHeight;
-                        tileVec3.z += 1;
-                    }
-                    if (vec2.y <= tileVec3.y * cellHeight &&
-                        currentMode == MovementMode::moveDown) {
-                        vec2.y = tileVec3.y * cellHeight;
-                        tileVec3.z += 1;
-                    }
-                    if (tileVec3.z == gridUnitPos.size()) {
-                        turnTile.erase(turnTile.begin());
-                        // FIX:Collect finished tiles and erase after the loop (erase-remove idiom)
-                        // basicaly: move out of loop to avoid ub
-                    }
-                    moveSpeed(vec2, tileMode[0], speed); // FIX: figure out witch and how to use
-                }
-                moveSpeed(vec2, currentMode, speed); // FIX: same
+            moveKeys(pendingMode);
 
-                // is_oob(vec2, gridSize, dead); // FIX:
+            if (currentMode != pendingMode) {
+                if (roundf(gridUnitPos[0].y / cellHeight) >= roundf(cellPos.y) &&
+                    currentMode == MovementMode::moveDown) {
+                    targetCell = {cellWidth * (roundf(cellPos.x)),
+                                  cellHeight * (roundf(cellPos.y) + 1)};
+                }
+                if (floorf(gridUnitPos[0].y / cellHeight) <= floorf(cellPos.y) &&
+                    currentMode == MovementMode::moveUp) {
+                    targetCell = {cellWidth * (floorf(cellPos.x)),
+                                  cellHeight * (floorf(cellPos.y) - 1)};
+                }
+                if (roundf(gridUnitPos[0].x / cellWidth) >= roundf(cellPos.x) &&
+                    currentMode == MovementMode::moveRight) {
+                    targetCell = {cellWidth * (roundf(cellPos.x) + 1),
+                                  cellHeight * (roundf(cellPos.y))};
+                }
+                if (floorf(gridUnitPos[0].x / cellWidth) <= floorf(cellPos.x) &&
+                    currentMode == MovementMode::moveLeft) {
+                    targetCell = {cellWidth * (floorf(cellPos.x) - 1),
+                                  cellHeight * (floorf(cellPos.y))};
+                }
+                gridUnitPos[0] = {targetCell.x, targetCell.y};
+                currentMode = pendingMode;
             }
+            moveSpeed(gridUnitPos[0], currentMode, speed);
+
+            // is_oob(gridUnitPos, gridSize, dead); // FIX:
         }
 
         //----------------------------------------------------------------------------------
@@ -242,7 +200,23 @@ int main(void) {
         } else {
             for ([[maybe_unused]] Vector2 vec2 : gridUnitPos) {
                 DrawRectangle(vec2.x, vec2.y, unitSize.x, unitSize.y, RED);
+
+                // NOTE: this is the bounding corner the coordinate of the unit
+                // debug slop
+                DrawRectangle(vec2.x, vec2.y, unitSize.x - (unitSize.x / 100 * 75),
+                              unitSize.y - (unitSize.y / 100 * 90), BLUE);
+                DrawRectangle(vec2.x, vec2.y, unitSize.x - (unitSize.x / 100 * 90),
+                              unitSize.y - (unitSize.y / 100 * 75), BLUE);
             }
+            // NOTE: debug slop aswell, bounding coords used for grid
+            for (int i = 0; i <= collumns; i++) {
+                for (int x = 0; x <= rows; x++) {
+                    DrawRectangle(i * cellWidth, x * cellHeight, 5, 5, SKYBLUE);
+                }
+            }
+
+            drawGrid(collumns, rows, cellWidth, cellHeight);
+            debugInfo(currentMode, pendingMode, speed, gridUnitPos, targetCell, cellPos);
         }
 
         EndDrawing();
