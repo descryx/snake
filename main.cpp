@@ -167,32 +167,14 @@ int main(void) {
                     gridUnitPos[0].x / cellWidth,
                     gridUnitPos[0].y / cellHeight,
                 };
-
-                moveKeys(pendingMode);
+                moveKeys(pendingMode); // FIX: currently skips all input after first registered inpt
+                                       // until turned
             }
 
             if (currentMode != pendingMode) {
                 turned = false;
-                // switch (currentMode) {
-                // case MovementMode::moveDown: // FIX: this thing snaps sometimes unnecessarry +1
-                //     targetCell = {cellWidth * (ceilf(cellPos.x)), cellHeight *
-                //     (ceilf(cellPos.y))};
-                //
-                // case MovementMode::moveUp:
-                //     targetCell = {cellWidth * (floorf(cellPos.x)),
-                //                   cellHeight * (floorf(cellPos.y))};
-                //
-                // case MovementMode::moveRight:
-                //     targetCell = {cellWidth * (ceilf(cellPos.x)), cellHeight *
-                //     (ceilf(cellPos.y))};
-                //
-                // case MovementMode::moveLeft:
-                //     targetCell = {cellWidth * (floorf(cellPos.x)),
-                //                   cellHeight * (floorf(cellPos.y))};
-                // }
-
                 if (currentMode == MovementMode::moveDown) {
-                    targetCell = {cellWidth * (ceilf(cellPos.x)), cellHeight * (ceilf(cellPos.y))};
+                    targetCell = {cellWidth * cellPos.x, cellHeight * ceilf(cellPos.y)};
                     if (gridUnitPos[0].y > targetCell.y) {
                         gridUnitPos[0] = {targetCell.x, targetCell.y};
                         turned = true;
@@ -200,8 +182,7 @@ int main(void) {
                     }
                 }
                 if (currentMode == MovementMode::moveUp) {
-                    targetCell = {cellWidth * (floorf(cellPos.x)),
-                                  cellHeight * (floorf(cellPos.y))};
+                    targetCell = {cellWidth * cellPos.x, cellHeight * floorf(cellPos.y)};
                     if (gridUnitPos[0].y < targetCell.y) {
                         gridUnitPos[0] = {targetCell.x, targetCell.y};
                         turned = true;
@@ -209,7 +190,7 @@ int main(void) {
                     }
                 }
                 if (currentMode == MovementMode::moveRight) {
-                    targetCell = {cellWidth * (ceilf(cellPos.x)), cellHeight * (ceilf(cellPos.y))};
+                    targetCell = {cellWidth * ceilf(cellPos.x), cellHeight * cellPos.y};
                     if (gridUnitPos[0].x > targetCell.x) {
                         gridUnitPos[0] = {targetCell.x, targetCell.y};
                         turned = true;
@@ -217,8 +198,7 @@ int main(void) {
                     }
                 }
                 if (currentMode == MovementMode::moveLeft) {
-                    targetCell = {cellWidth * (floorf(cellPos.x)),
-                                  cellHeight * (floorf(cellPos.y))};
+                    targetCell = {cellWidth * floorf(cellPos.x), cellHeight * cellPos.y};
                     if (gridUnitPos[0].x < targetCell.x) {
                         gridUnitPos[0] = {targetCell.x, targetCell.y};
                         turned = true;
