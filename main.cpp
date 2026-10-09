@@ -48,30 +48,25 @@ void moveSpeed(Vector2 &gridUnitPos, MovementMode &currentMode, const float &spe
     }
 }
 
-void addUnit(std::vector<Vector2> &gridUnitPos, Vector2 unitSize, MovementMode &currentMode) {
+void addUnit(std::vector<Vector2> &gridUnitPos, Vector2 unitSize, MovementMode &currentMode,
+             Vector2 cellSize) {
     switch (currentMode) {
     case MovementMode::moveUp:
-        gridUnitPos.push_back(
-            {gridUnitPos[gridUnitPos.size() - 1].x,
-             gridUnitPos[gridUnitPos.size() - 1].y - (gridUnitPos.size() + unitSize.y)});
+        gridUnitPos.push_back({gridUnitPos[0].x, gridUnitPos[0].y - (unitSize.y + cellSize.y)});
         break;
+        // TODO: need to make so spawn 1 behind last unit or
+        //
 
     case MovementMode::moveDown:
-        gridUnitPos.push_back(
-            {gridUnitPos[gridUnitPos.size() - 1].x,
-             gridUnitPos[gridUnitPos.size() - 1].y + (gridUnitPos.size() + unitSize.y)});
+        gridUnitPos.push_back({gridUnitPos[0].x, gridUnitPos[0].y + (unitSize.y + cellSize.y)});
         break;
 
     case MovementMode::moveLeft:
-        gridUnitPos.push_back(
-            {gridUnitPos[gridUnitPos.size() - 1].x - (gridUnitPos.size() + unitSize.x),
-             gridUnitPos[gridUnitPos.size() - 1].y});
+        gridUnitPos.push_back({gridUnitPos[0].x - (unitSize.x + cellSize.x), gridUnitPos[0].y});
         break;
 
     case MovementMode::moveRight:
-        gridUnitPos.push_back(
-            {gridUnitPos[gridUnitPos.size() - 1].x + (gridUnitPos.size() + unitSize.x),
-             gridUnitPos[gridUnitPos.size() - 1].y});
+        gridUnitPos.push_back({gridUnitPos[0].x + (unitSize.x + cellSize.x), gridUnitPos[0].y});
         break;
     }
 }
@@ -86,13 +81,12 @@ void is_oob(const std::vector<Vector2> &gridUnitPos, const Vector2 &windowSize, 
         dead = true;
     }
 }
-void drawGrid(const float &collumns, const float &rows, const float &cellWidth,
-              const float &cellHeight) {
+void drawGrid(const float &collumns, const float &rows, const Vector2 cellSize) {
     for (int i = 0; i <= collumns; i++) { // FIX: make it draw the missing edge line
-        DrawLineV({i * cellWidth, 0}, {i * cellWidth, rows * cellHeight}, PINK);
+        DrawLineV({i * cellSize.x, 0}, {i * cellSize.x, rows * cellSize.y}, PINK);
     }
     for (int i = 0; i <= rows; i++) {
-        DrawLineV({0, i * cellHeight}, {collumns * cellWidth, i * cellHeight}, PINK);
+        DrawLineV({0, i * cellSize.y}, {collumns * cellSize.x, i * cellSize.y}, PINK);
     }
 }
 
@@ -132,20 +126,19 @@ int main(void) {
     // NOTE: window dependent
     float collumns = 16.0f;
     float rows = 9.0f;
-    float cellWidth = (windowSize.x / collumns);
-    float cellHeight = (windowSize.y / rows);
+    Vector2 cellSize = {windowSize.x / collumns, windowSize.y / rows};
     std::vector<Vector2> gridUnitPos;
-    Vector2 targetCell = {0, 0};
+    Vector2 turnCell = {0, 0};
     Vector2 cellPos = {0, 0};
     bool turned = true;
 
     // NOTE: initial spawn of 1st head at ~middle of window
-    gridUnitPos.push_back({roundf(collumns / 2) * cellWidth, roundf(rows / 2) * cellHeight});
+    gridUnitPos.push_back({roundf(collumns / 2) * cellSize.x, roundf(rows / 2) * cellSize.y});
 
     float speed = 10.0f;
     bool dead = false;
-    Vector2 unitSize = {roundf(cellWidth / 100 * 75), roundf(cellHeight / 100 * 75)};
-    Vector2 unitGapFromLines = {(cellWidth - unitSize.x) / 2, (cellHeight - unitSize.y) / 2};
+    Vector2 unitSize = {roundf(cellSize.x / 100 * 75), roundf(cellSize.y / 100 * 75)};
+    Vector2 unitGapFromLines = {(cellSize.x - unitSize.x) / 2, (cellSize.y - unitSize.y) / 2};
 
     while (!WindowShouldClose()) {
         if (IsKeyPressed(KEY_Q)) {
@@ -153,7 +146,23 @@ int main(void) {
         }
 
         if (IsKeyPressed(KEY_A)) {
-            addUnit(gridUnitPos, unitSize, currentMode); // NOTE: forget about this shit for a while
+            // addUnit(gridUnitPos, unitSize, currentMode, cellSize.x, cellSize.y);
+            if (currentMode == MovementMode::moveDown) {
+                gridUnitPos.push_back({gridUnitPos[gridUnitPos.size() - 1].x,
+                                       gridUnitPos[gridUnitPos.size() - 1].y - cellSize.y});
+
+            } else if (currentMode == MovementMode::moveUp) {
+                gridUnitPos.push_back({gridUnitPos[gridUnitPos.size() - 1].x,
+                                       gridUnitPos[gridUnitPos.size() - 1].y + cellSize.y});
+
+            } else if (currentMode == MovementMode::moveRight) {
+                gridUnitPos.push_back({gridUnitPos[gridUnitPos.size() - 1].x - cellSize.x,
+                                       gridUnitPos[gridUnitPos.size() - 1].y});
+
+            } else if (currentMode == MovementMode::moveLeft) {
+                gridUnitPos.push_back({gridUnitPos[gridUnitPos.size() - 1].x + cellSize.x,
+                                       gridUnitPos[gridUnitPos.size() - 1].y});
+            }
         }
         if (IsKeyPressed(KEY_MINUS)) {
             speed -= 10;
@@ -164,53 +173,53 @@ int main(void) {
         if (IsWindowFocused() && !dead) {
             if (turned) {
                 cellPos = {
-                    gridUnitPos[0].x / cellWidth,
-                    gridUnitPos[0].y / cellHeight,
+                    gridUnitPos[0].x / cellSize.x,
+                    gridUnitPos[0].y / cellSize.y,
                 };
-                moveKeys(pendingMode); // FIX: currently skips all input after first registered inpt
-                                       // until turned
+                moveKeys(pendingMode); // FIX: currently skips all input after first
+                                       // registered inpt until turned
             }
 
             if (currentMode != pendingMode) {
                 turned = false;
                 if (currentMode == MovementMode::moveDown) {
-                    targetCell = {cellWidth * cellPos.x, cellHeight * ceilf(cellPos.y)};
-                    if (gridUnitPos[0].y > targetCell.y) {
-                        gridUnitPos[0] = {targetCell.x, targetCell.y};
+                    turnCell = {cellSize.x * cellPos.x, cellSize.y * ceilf(cellPos.y)};
+                    if (gridUnitPos[0].y > turnCell.y) {
+                        gridUnitPos[0] = {turnCell.x, turnCell.y};
                         turned = true;
                         currentMode = pendingMode;
                     }
-                }
-                if (currentMode == MovementMode::moveUp) {
-                    targetCell = {cellWidth * cellPos.x, cellHeight * floorf(cellPos.y)};
-                    if (gridUnitPos[0].y < targetCell.y) {
-                        gridUnitPos[0] = {targetCell.x, targetCell.y};
+                } else if (currentMode == MovementMode::moveUp) {
+                    turnCell = {cellSize.x * cellPos.x, cellSize.y * floorf(cellPos.y)};
+                    if (gridUnitPos[0].y < turnCell.y) {
+                        gridUnitPos[0] = {turnCell.x, turnCell.y};
                         turned = true;
                         currentMode = pendingMode;
                     }
-                }
-                if (currentMode == MovementMode::moveRight) {
-                    targetCell = {cellWidth * ceilf(cellPos.x), cellHeight * cellPos.y};
-                    if (gridUnitPos[0].x > targetCell.x) {
-                        gridUnitPos[0] = {targetCell.x, targetCell.y};
+                } else if (currentMode == MovementMode::moveRight) {
+                    turnCell = {cellSize.x * ceilf(cellPos.x), cellSize.y * cellPos.y};
+                    if (gridUnitPos[0].x > turnCell.x) {
+                        gridUnitPos[0] = {turnCell.x, turnCell.y};
                         turned = true;
                         currentMode = pendingMode;
                     }
-                }
-                if (currentMode == MovementMode::moveLeft) {
-                    targetCell = {cellWidth * floorf(cellPos.x), cellHeight * cellPos.y};
-                    if (gridUnitPos[0].x < targetCell.x) {
-                        gridUnitPos[0] = {targetCell.x, targetCell.y};
+                } else if (currentMode == MovementMode::moveLeft) {
+                    turnCell = {cellSize.x * floorf(cellPos.x), cellSize.y * cellPos.y};
+                    if (gridUnitPos[0].x < turnCell.x) {
+                        gridUnitPos[0] = {turnCell.x, turnCell.y};
                         turned = true;
                         currentMode = pendingMode;
                     }
                 }
             }
-            moveSpeed(gridUnitPos[0], currentMode, speed);
+
+            for (Vector2 &vec2 : gridUnitPos) {
+                moveSpeed(vec2, currentMode, speed);
+            }
 
             is_oob(gridUnitPos, windowSize, dead,
-                   unitSize); // FIX: one hitbox calc affects another, either one + or - achises
-                              // work at a time
+                   unitSize); // FIX: one hitbox calc affects another, either one + or -
+                              // achses work at a time
         }
 
         //----------------------------------------------------------------------------------
@@ -237,12 +246,12 @@ int main(void) {
             // NOTE: debug slop aswell, bounding coords used for grid
             for (int i = 0; i <= collumns; i++) {
                 for (int x = 0; x <= rows; x++) {
-                    DrawRectangle(i * cellWidth, x * cellHeight, 5, 5, SKYBLUE);
+                    DrawRectangle(i * cellSize.x, x * cellSize.y, 5, 5, SKYBLUE);
                 }
             }
 
-            drawGrid(collumns, rows, cellWidth, cellHeight);
-            debugInfo(currentMode, pendingMode, speed, gridUnitPos, targetCell, cellPos);
+            drawGrid(collumns, rows, cellSize);
+            debugInfo(currentMode, pendingMode, speed, gridUnitPos, turnCell, cellPos);
         }
 
         EndDrawing();
