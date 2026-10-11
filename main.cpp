@@ -116,6 +116,20 @@ void debugInfo(const MovementMode &currentMode, const MovementMode &pendingMode,
              50, 250, 18, GREEN);
 }
 
+MovementMode oppositeDir(MovementMode &modeToEvaluate) {
+
+    if (modeToEvaluate == MovementMode::moveDown) {
+        return MovementMode::moveUp;
+    } else if (modeToEvaluate == MovementMode::moveUp) {
+        return MovementMode::moveDown;
+    } else if (modeToEvaluate == MovementMode::moveRight) {
+        return MovementMode::moveLeft;
+    } else if (modeToEvaluate == MovementMode::moveLeft) {
+        return MovementMode::moveRight;
+    }
+    return MovementMode::moveRight; // idk if its okay to do so
+}
+
 int main(void) {
 
     Vector2 windowSize = {((1920.0f / 100) * 62.5), ((1080.0f / 100) * 62.5)};
@@ -135,7 +149,7 @@ int main(void) {
     // NOTE: initial spawn of 1st head at ~middle of window
     gridUnitPos.push_back({roundf(collumns / 2) * cellSize.x, roundf(rows / 2) * cellSize.y});
 
-    float speed = 10.0f;
+    float speed = 20.0f;
     bool dead = false;
     Vector2 unitSize = {roundf(cellSize.x / 100 * 75), roundf(cellSize.y / 100 * 75)};
     Vector2 unitGapFromLines = {(cellSize.x - unitSize.x) / 2, (cellSize.y - unitSize.y) / 2};
@@ -176,12 +190,20 @@ int main(void) {
                     gridUnitPos[0].x / cellSize.x,
                     gridUnitPos[0].y / cellSize.y,
                 };
-                moveKeys(pendingMode); // FIX: currently skips all input after first
-                                       // registered inpt until turned
             }
 
-            if (currentMode != pendingMode) {
+            MovementMode pendingForPendingMode;
+            moveKeys(pendingForPendingMode);
+            if (pendingForPendingMode != oppositeDir(currentMode)) {
+                pendingMode = pendingForPendingMode;
+            }
+
+            if (currentMode != oppositeDir(pendingMode)) {
                 turned = false;
+                // for each if not in same mode as next unit, go forward and on next tile change
+                // mode to same direction as next tile
+                // aka. see if next unit has diff turn dir, if yes wait for nex cell then turn
+                // same dir.
                 if (currentMode == MovementMode::moveDown) {
                     turnCell = {cellSize.x * cellPos.x, cellSize.y * ceilf(cellPos.y)};
                     if (gridUnitPos[0].y > turnCell.y) {
