@@ -1,5 +1,7 @@
 #include "raylib.h"
 #include <cmath>
+#include <cstdlib>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -235,9 +237,53 @@ int main(void) {
                 }
             }
 
-            for (Vector2 &vec2 : gridUnitPos) {
-                moveSpeed(vec2, currentMode, speed);
+            for (float i = 0; i < gridUnitPos.size(); i++) {
+                const float move = GetFrameTime() * 6.0f * speed;
+
+                Vector2 &curr = gridUnitPos[i + 1];
+                Vector2 &next = gridUnitPos[i];
+
+                float step = GetFrameTime() * 6.0f * speed;
+                Vector2 diff = {next.x - curr.x, next.y - curr.y};
+
+                if (std::abs(diff.x) <= step) {
+                    curr.x = next.x;
+                } else {
+                    curr.x += (diff.x > 0) ? step : -step;
+                }
+                if (std::abs(diff.y) <= step) {
+                    curr.y = next.y;
+                } else {
+                    curr.y += (diff.y > 0) ? step : -step;
+                }
+                // FIX:
+                //  ===== PLAN: smooth snake body via head cell-path (option B) =====
+                //  1. Keep the head moving exactly as it does now (pixel-smooth, snaps/turns at
+                //  cells).
+                //  2. Track head progress within its current cell as t in [0,1].
+                //  3. Maintain std::deque<Vector2> path of cell-origin pixel coords, front = head's
+                //  current cell.
+                //  4. On crossing into a new cell: push new cell to front, reset t=0, pop back
+                //  unless growing.
+                //  5. Derive every segment instead of moving it: seg[i] = lerp(path[i+1], path[i],
+                //  t).
+                //  6. Delete the chase loop (main.cpp:239-254) -> removes the [i+1] out-of-bounds
+                //  and all epsilons.
+                //  7. Size path to snake length; growth = skip the pop on that step.
+                //  ================================================================
+
+                // if (curr.x < next.x) {
+                //     curr.x += move;
+                // } else if (curr.y < next.y) {
+                //     curr.y += move;
+                // } else if (curr.x > next.x) {
+                //     curr.x -= move;
+                // } else if (curr.y > next.y) {
+                //     curr.y -= move;
+                // }
             }
+
+            moveSpeed(gridUnitPos[0], currentMode, speed);
 
             is_oob(gridUnitPos, windowSize, dead,
                    unitSize); // FIX: one hitbox calc affects another, either one + or -
