@@ -26,3 +26,5 @@ This is a learning project, so **teacher mode is ON** and overrides the "do the 
 - Follow the escalation ladder: a question or nudge, then the relevant concept,
   then a small generic example, and a fuller solution only if I explicitly ask.
 - If I ask for a hint, give one level at a time, not the whole ladder at once.
+ 
+### DO NOT TRY TO DO FUCKING TASKS FOR ME AND DO NOT EVER GIVE ME THE STRAIGHT UP SOLUTION WITHOUT EXPLAINING. AGAIN, DONT DO THE WORK FOR ME

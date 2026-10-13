@@ -1,6 +1,8 @@
 #include "raylib.h"
 #include <cmath>
 #include <cstdlib>
+#include <deque>
+#include <numbers>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -31,55 +33,53 @@ bool moveKeys(MovementMode &currentMode) {
     return false;
 }
 
-void moveSpeed(Vector2 &gridUnitPos, MovementMode &currentMode, const float &speed) {
+void moveSpeed(Vector2 &pixelUnitPos, MovementMode &currentMode, const float &speed) {
     const float move = GetFrameTime() * 6.0f * speed;
 
     switch (currentMode) {
     case MovementMode::moveUp:
-        gridUnitPos.y -= move;
+        pixelUnitPos.y -= move;
         break;
     case MovementMode::moveDown:
-        gridUnitPos.y += move;
+        pixelUnitPos.y += move;
         break;
     case MovementMode::moveLeft:
-        gridUnitPos.x -= move;
+        pixelUnitPos.x -= move;
         break;
     case MovementMode::moveRight:
-        gridUnitPos.x += move;
+        pixelUnitPos.x += move;
         break;
     }
 }
 
-void addUnit(std::vector<Vector2> &gridUnitPos, Vector2 unitSize, MovementMode &currentMode,
+void addUnit(std::vector<Vector2> &pixelUnitPos, Vector2 unitSize, MovementMode &currentMode,
              Vector2 cellSize) {
     switch (currentMode) {
     case MovementMode::moveUp:
-        gridUnitPos.push_back({gridUnitPos[0].x, gridUnitPos[0].y - (unitSize.y + cellSize.y)});
-        break;
-        // TODO: need to make so spawn 1 behind last unit or
-        //
+        pixelUnitPos.push_back({pixelUnitPos[0].x, pixelUnitPos[0].y - (unitSize.y + cellSize.y)});
+        break; // FIX: spawns 1 pixel off, idk what exaclty or withc
 
     case MovementMode::moveDown:
-        gridUnitPos.push_back({gridUnitPos[0].x, gridUnitPos[0].y + (unitSize.y + cellSize.y)});
+        pixelUnitPos.push_back({pixelUnitPos[0].x, pixelUnitPos[0].y + (unitSize.y + cellSize.y)});
         break;
 
     case MovementMode::moveLeft:
-        gridUnitPos.push_back({gridUnitPos[0].x - (unitSize.x + cellSize.x), gridUnitPos[0].y});
+        pixelUnitPos.push_back({pixelUnitPos[0].x - (unitSize.x + cellSize.x), pixelUnitPos[0].y});
         break;
 
     case MovementMode::moveRight:
-        gridUnitPos.push_back({gridUnitPos[0].x + (unitSize.x + cellSize.x), gridUnitPos[0].y});
+        pixelUnitPos.push_back({pixelUnitPos[0].x + (unitSize.x + cellSize.x), pixelUnitPos[0].y});
         break;
     }
 }
 
-void is_oob(const std::vector<Vector2> &gridUnitPos, const Vector2 &windowSize, bool &dead,
+void is_oob(const std::vector<Vector2> &pixelUnitPos, const Vector2 &windowSize, bool &dead,
             const Vector2 &unitSize) {
-    if (gridUnitPos[0].x + unitSize.x >
+    if (pixelUnitPos[0].x + unitSize.x >
             windowSize.x || // FIX: no fucking idea why the one affect another
-        gridUnitPos[0].x + (unitSize.x / 76 * 100) < 0 ||
-        gridUnitPos[0].y + unitSize.y > windowSize.y ||
-        gridUnitPos[0].y + (unitSize.y / 75 * 100) < 0) {
+        pixelUnitPos[0].x + (unitSize.x / 76 * 100) < 0 ||
+        pixelUnitPos[0].y + unitSize.y > windowSize.y ||
+        pixelUnitPos[0].y + (unitSize.y / 75 * 100) < 0) {
         dead = true;
     }
 }
@@ -106,13 +106,13 @@ const char *modeName(MovementMode m) {
     return "?";
 }
 void debugInfo(const MovementMode &currentMode, const MovementMode &pendingMode, const float &speed,
-               const std::vector<Vector2> &gridUnitPos, const Vector2 &targetCell,
+               const std::vector<Vector2> &pixelUnitPos, const Vector2 &targetCell,
                const Vector2 &cellPos) {
     DrawText(TextFormat("current:  %s\npending: %s", modeName(currentMode), modeName(pendingMode)),
              50, 50, 18, GREEN);
     DrawText(TextFormat("speed: %f", speed), 50, 100, 18, GREEN);
-    DrawText(TextFormat("UnitPos \nX: %f\nY: %f", gridUnitPos[0].x, gridUnitPos[0].y), 50, 150, 18,
-             GREEN);
+    DrawText(TextFormat("UnitPos \nX: %f\nY: %f", pixelUnitPos[0].x, pixelUnitPos[0].y), 50, 150,
+             18, GREEN);
     DrawText(TextFormat("cellPos: X = %f\nY = %f\nnewTile: X = %f\nY = %f", cellPos.x, cellPos.y,
                         targetCell.x, targetCell.y),
              50, 250, 18, GREEN);
@@ -143,13 +143,16 @@ int main(void) {
     float collumns = 16.0f;
     float rows = 9.0f;
     Vector2 cellSize = {windowSize.x / collumns, windowSize.y / rows};
-    std::vector<Vector2> gridUnitPos;
-    Vector2 turnCell = {0, 0};
-    Vector2 cellPos = {0, 0};
-    bool turned = true;
+    std::vector<Vector2> pixelUnitPos;
+    Vector2 nextCellToTurnHead = {0, 0};
+    Vector2 nextCellToTurn = {0, 0};
+    Vector2 cellPosOfHead = {0, 0};
+    std::deque<Vector2> path = {{0, 0}};
+    bool turnedHead = false;
+    Vector2 unitFractionPosition = {0, 0};
 
     // NOTE: initial spawn of 1st head at ~middle of window
-    gridUnitPos.push_back({roundf(collumns / 2) * cellSize.x, roundf(rows / 2) * cellSize.y});
+    pixelUnitPos.push_back({roundf(collumns / 2) * cellSize.x, roundf(rows / 2) * cellSize.y});
 
     float speed = 20.0f;
     bool dead = false;
@@ -162,22 +165,22 @@ int main(void) {
         }
 
         if (IsKeyPressed(KEY_A)) {
-            // addUnit(gridUnitPos, unitSize, currentMode, cellSize.x, cellSize.y);
+            // addUnit(pixelUnitPos, unitSize, currentMode, cellSize.x, cellSize.y);
             if (currentMode == MovementMode::moveDown) {
-                gridUnitPos.push_back({gridUnitPos[gridUnitPos.size() - 1].x,
-                                       gridUnitPos[gridUnitPos.size() - 1].y - cellSize.y});
+                pixelUnitPos.push_back({pixelUnitPos[pixelUnitPos.size() - 1].x,
+                                        pixelUnitPos[pixelUnitPos.size() - 1].y - cellSize.y});
 
             } else if (currentMode == MovementMode::moveUp) {
-                gridUnitPos.push_back({gridUnitPos[gridUnitPos.size() - 1].x,
-                                       gridUnitPos[gridUnitPos.size() - 1].y + cellSize.y});
+                pixelUnitPos.push_back({pixelUnitPos[pixelUnitPos.size() - 1].x,
+                                        pixelUnitPos[pixelUnitPos.size() - 1].y + cellSize.y});
 
             } else if (currentMode == MovementMode::moveRight) {
-                gridUnitPos.push_back({gridUnitPos[gridUnitPos.size() - 1].x - cellSize.x,
-                                       gridUnitPos[gridUnitPos.size() - 1].y});
+                pixelUnitPos.push_back({pixelUnitPos[pixelUnitPos.size() - 1].x - cellSize.x,
+                                        pixelUnitPos[pixelUnitPos.size() - 1].y});
 
             } else if (currentMode == MovementMode::moveLeft) {
-                gridUnitPos.push_back({gridUnitPos[gridUnitPos.size() - 1].x + cellSize.x,
-                                       gridUnitPos[gridUnitPos.size() - 1].y});
+                pixelUnitPos.push_back({pixelUnitPos[pixelUnitPos.size() - 1].x + cellSize.x,
+                                        pixelUnitPos[pixelUnitPos.size() - 1].y});
             }
         }
         if (IsKeyPressed(KEY_MINUS)) {
@@ -187,105 +190,86 @@ int main(void) {
         }
 
         if (IsWindowFocused() && !dead) {
-            if (turned) {
-                cellPos = {
-                    gridUnitPos[0].x / cellSize.x,
-                    gridUnitPos[0].y / cellSize.y,
-                };
+            cellPosOfHead = {
+                pixelUnitPos[0].x / cellSize.x,
+                pixelUnitPos[0].y / cellSize.y,
+            };
+
+            if (currentMode == MovementMode::moveDown) {
+                nextCellToTurn = {cellSize.x * cellPosOfHead.x,
+                                  cellSize.y * ceilf(cellPosOfHead.y)};
+
+            } else if (currentMode == MovementMode::moveUp) {
+                nextCellToTurn = {cellSize.x * cellPosOfHead.x,
+                                  cellSize.y * floorf(cellPosOfHead.y)};
+
+            } else if (currentMode == MovementMode::moveRight) {
+                nextCellToTurn = {cellSize.x * ceilf(cellPosOfHead.x),
+                                  cellSize.y * cellPosOfHead.y};
+
+            } else if (currentMode == MovementMode::moveLeft) {
+                nextCellToTurn = {cellSize.x * floorf(cellPosOfHead.x),
+                                  cellSize.y * cellPosOfHead.y};
             }
 
-            MovementMode pendingForPendingMode;
-            moveKeys(pendingForPendingMode);
-            if (pendingForPendingMode != oppositeDir(currentMode)) {
-                pendingMode = pendingForPendingMode;
+            if (!turnedHead) {
+                nextCellToTurnHead = nextCellToTurn;
+            }
+
+            unitFractionPosition = {cellPosOfHead.x - floorf(cellPosOfHead.x),
+                                    cellPosOfHead.y - floorf(cellPosOfHead.y)};
+
+            if (moveKeys(pendingMode)) {
+                turnedHead = true;
             }
 
             if (currentMode != oppositeDir(pendingMode)) {
-                turned = false;
-                // for each if not in same mode as next unit, go forward and on next tile change
-                // mode to same direction as next tile
-                // aka. see if next unit has diff turn dir, if yes wait for nex cell then turn
-                // same dir.
-                if (currentMode == MovementMode::moveDown) {
-                    turnCell = {cellSize.x * cellPos.x, cellSize.y * ceilf(cellPos.y)};
-                    if (gridUnitPos[0].y > turnCell.y) {
-                        gridUnitPos[0] = {turnCell.x, turnCell.y};
-                        turned = true;
+                if (currentMode == MovementMode::moveDown &&
+                    pixelUnitPos[0].y > nextCellToTurnHead.y) {
+                    pixelUnitPos[0] = nextCellToTurnHead;
+                    path.push_front({nextCellToTurn.x, nextCellToTurn.y});
+                    if (turnedHead) {
                         currentMode = pendingMode;
+                        turnedHead = false;
                     }
-                } else if (currentMode == MovementMode::moveUp) {
-                    turnCell = {cellSize.x * cellPos.x, cellSize.y * floorf(cellPos.y)};
-                    if (gridUnitPos[0].y < turnCell.y) {
-                        gridUnitPos[0] = {turnCell.x, turnCell.y};
-                        turned = true;
+                } else if (currentMode == MovementMode::moveUp &&
+                           pixelUnitPos[0].y < nextCellToTurnHead.y) {
+                    pixelUnitPos[0] = nextCellToTurnHead;
+                    path.push_front({nextCellToTurn.x, nextCellToTurn.y});
+                    if (turnedHead) {
                         currentMode = pendingMode;
+                        turnedHead = false;
                     }
-                } else if (currentMode == MovementMode::moveRight) {
-                    turnCell = {cellSize.x * ceilf(cellPos.x), cellSize.y * cellPos.y};
-                    if (gridUnitPos[0].x > turnCell.x) {
-                        gridUnitPos[0] = {turnCell.x, turnCell.y};
-                        turned = true;
+                } else if (currentMode == MovementMode::moveRight &&
+                           pixelUnitPos[0].x > nextCellToTurnHead.x) {
+                    pixelUnitPos[0] = nextCellToTurnHead;
+                    path.push_front({nextCellToTurn.x, nextCellToTurn.y});
+                    if (turnedHead) {
                         currentMode = pendingMode;
+                        turnedHead = false;
                     }
-                } else if (currentMode == MovementMode::moveLeft) {
-                    turnCell = {cellSize.x * floorf(cellPos.x), cellSize.y * cellPos.y};
-                    if (gridUnitPos[0].x < turnCell.x) {
-                        gridUnitPos[0] = {turnCell.x, turnCell.y};
-                        turned = true;
+                } else if (currentMode == MovementMode::moveLeft &&
+                           pixelUnitPos[0].x < nextCellToTurnHead.x) {
+                    pixelUnitPos[0] = nextCellToTurnHead;
+                    path.push_front({nextCellToTurn.x, nextCellToTurn.y});
+                    if (turnedHead) {
                         currentMode = pendingMode;
+                        turnedHead = false;
                     }
+                }
+                if (path.size() > pixelUnitPos.size()) {
+                    path.pop_back();
                 }
             }
 
-            for (float i = 0; i < gridUnitPos.size(); i++) {
-                const float move = GetFrameTime() * 6.0f * speed;
-
-                Vector2 &curr = gridUnitPos[i + 1];
-                Vector2 &next = gridUnitPos[i];
-
-                float step = GetFrameTime() * 6.0f * speed;
-                Vector2 diff = {next.x - curr.x, next.y - curr.y};
-
-                if (std::abs(diff.x) <= step) {
-                    curr.x = next.x;
-                } else {
-                    curr.x += (diff.x > 0) ? step : -step;
-                }
-                if (std::abs(diff.y) <= step) {
-                    curr.y = next.y;
-                } else {
-                    curr.y += (diff.y > 0) ? step : -step;
-                }
-                // FIX:
-                //  ===== PLAN: smooth snake body via head cell-path (option B) =====
-                //  1. Keep the head moving exactly as it does now (pixel-smooth, snaps/turns at
-                //  cells).
-                //  2. Track head progress within its current cell as t in [0,1].
-                //  3. Maintain std::deque<Vector2> path of cell-origin pixel coords, front = head's
-                //  current cell.
-                //  4. On crossing into a new cell: push new cell to front, reset t=0, pop back
-                //  unless growing.
-                //  5. Derive every segment instead of moving it: seg[i] = lerp(path[i+1], path[i],
-                //  t).
-                //  6. Delete the chase loop (main.cpp:239-254) -> removes the [i+1] out-of-bounds
-                //  and all epsilons.
-                //  7. Size path to snake length; growth = skip the pop on that step.
-                //  ================================================================
-
-                // if (curr.x < next.x) {
-                //     curr.x += move;
-                // } else if (curr.y < next.y) {
-                //     curr.y += move;
-                // } else if (curr.x > next.x) {
-                //     curr.x -= move;
-                // } else if (curr.y > next.y) {
-                //     curr.y -= move;
-                // }
+            for (float i = 1; i < pixelUnitPos.size(); i++) {
+                pixelUnitPos[i] = {std::lerp(path[i].x, path[i - 1].x, unitFractionPosition.x),
+                                   std::lerp(path[i].y, path[i - 1].y, unitFractionPosition.y)};
             }
 
-            moveSpeed(gridUnitPos[0], currentMode, speed);
+            moveSpeed(pixelUnitPos[0], currentMode, speed);
 
-            is_oob(gridUnitPos, windowSize, dead,
+            is_oob(pixelUnitPos, windowSize, dead,
                    unitSize); // FIX: one hitbox calc affects another, either one + or -
                               // achses work at a time
         }
@@ -300,7 +284,7 @@ int main(void) {
                      (windowSize.x / 2) - 50, (windowSize.y / 2) - 25, 24, WHITE);
 
         } else {
-            for ([[maybe_unused]] Vector2 vec2 : gridUnitPos) {
+            for ([[maybe_unused]] Vector2 vec2 : pixelUnitPos) {
                 DrawRectangle(vec2.x + unitGapFromLines.x, vec2.y + unitGapFromLines.y, unitSize.x,
                               unitSize.y, RED);
 
@@ -319,7 +303,8 @@ int main(void) {
             }
 
             drawGrid(collumns, rows, cellSize);
-            debugInfo(currentMode, pendingMode, speed, gridUnitPos, turnCell, cellPos);
+            debugInfo(currentMode, pendingMode, speed, pixelUnitPos, nextCellToTurnHead,
+                      cellPosOfHead);
         }
 
         EndDrawing();
