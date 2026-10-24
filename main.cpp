@@ -33,7 +33,7 @@ bool moveKeys(MovementMode &currentMode) {
     return false;
 }
 
-void moveSpeed(Vector2 &pixelUnitPos, MovementMode &currentMode, const float &speed) {
+void moveSpeed(Vector2 &pixelUnitPos, const MovementMode &currentMode, const float &speed) {
     const float move = GetFrameTime() * 6.0f * speed;
 
     switch (currentMode) {
@@ -132,6 +132,20 @@ MovementMode oppositeDir(MovementMode &modeToEvaluate) {
     return MovementMode::moveRight; // idk if its okay to do so
 }
 
+Vector2 step(MovementMode m, Vector2 cellSize) {
+    switch (m) {
+    case MovementMode::moveLeft:
+        return {-cellSize.x, 0};
+    case MovementMode::moveRight:
+        return {+cellSize.x, 0};
+    case MovementMode::moveUp:
+        return {0, -cellSize.y};
+    case MovementMode::moveDown:
+        return {0, +cellSize.y};
+    }
+    return {0, 0};
+}
+
 int main(void) {
 
     Vector2 windowSize = {((1920.0f / 100) * 62.5), ((1080.0f / 100) * 62.5)};
@@ -144,15 +158,16 @@ int main(void) {
     float rows = 9.0f;
     Vector2 cellSize = {windowSize.x / collumns, windowSize.y / rows};
     std::vector<Vector2> pixelUnitPos;
-    Vector2 nextCellToTurnHead = {0, 0};
-    Vector2 nextCellToTurn = {0, 0};
-    Vector2 cellPosOfHead = {0, 0};
-    std::deque<Vector2> path = {{0, 0}};
+    Vector2 nextPixelTurnHead;
+    Vector2 cellPosOfHead;
+    std::deque<Vector2> path;
     bool turnedHead = false;
-    Vector2 unitFractionPosition = {0, 0};
+    bool crossed = false;
+    Vector2 unitFractionPosition;
 
     // NOTE: initial spawn of 1st head at ~middle of window
     pixelUnitPos.push_back({roundf(collumns / 2) * cellSize.x, roundf(rows / 2) * cellSize.y});
+    nextPixelTurnHead = {pixelUnitPos[0].x + cellSize.x, pixelUnitPos[0].y};
 
     float speed = 20.0f;
     bool dead = false;
@@ -165,7 +180,6 @@ int main(void) {
         }
 
         if (IsKeyPressed(KEY_A)) {
-            // addUnit(pixelUnitPos, unitSize, currentMode, cellSize.x, cellSize.y);
             if (currentMode == MovementMode::moveDown) {
                 pixelUnitPos.push_back({pixelUnitPos[pixelUnitPos.size() - 1].x,
                                         pixelUnitPos[pixelUnitPos.size() - 1].y - cellSize.y});
@@ -195,27 +209,6 @@ int main(void) {
                 pixelUnitPos[0].y / cellSize.y,
             };
 
-            if (currentMode == MovementMode::moveDown) {
-                nextCellToTurn = {cellSize.x * cellPosOfHead.x,
-                                  cellSize.y * ceilf(cellPosOfHead.y)};
-
-            } else if (currentMode == MovementMode::moveUp) {
-                nextCellToTurn = {cellSize.x * cellPosOfHead.x,
-                                  cellSize.y * floorf(cellPosOfHead.y)};
-
-            } else if (currentMode == MovementMode::moveRight) {
-                nextCellToTurn = {cellSize.x * ceilf(cellPosOfHead.x),
-                                  cellSize.y * cellPosOfHead.y};
-
-            } else if (currentMode == MovementMode::moveLeft) {
-                nextCellToTurn = {cellSize.x * floorf(cellPosOfHead.x),
-                                  cellSize.y * cellPosOfHead.y};
-            }
-
-            if (!turnedHead) {
-                nextCellToTurnHead = nextCellToTurn;
-            }
-
             unitFractionPosition = {cellPosOfHead.x - floorf(cellPosOfHead.x),
                                     cellPosOfHead.y - floorf(cellPosOfHead.y)};
 
@@ -224,54 +217,77 @@ int main(void) {
             }
 
             if (currentMode != oppositeDir(pendingMode)) {
-                if (currentMode == MovementMode::moveDown &&
-                    pixelUnitPos[0].y > nextCellToTurnHead.y) {
-                    pixelUnitPos[0] = nextCellToTurnHead;
-                    path.push_front({nextCellToTurn.x, nextCellToTurn.y});
+
+                if (currentMode == MovementMode::moveRight &&
+                    pixelUnitPos[0].x >= nextPixelTurnHead.x) {
+                    pixelUnitPos[0].x = nextPixelTurnHead.x;
+                    path.push_front({nextPixelTurnHead.x, nextPixelTurnHead.y});
                     if (turnedHead) {
                         currentMode = pendingMode;
                         turnedHead = false;
                     }
-                } else if (currentMode == MovementMode::moveUp &&
-                           pixelUnitPos[0].y < nextCellToTurnHead.y) {
-                    pixelUnitPos[0] = nextCellToTurnHead;
-                    path.push_front({nextCellToTurn.x, nextCellToTurn.y});
-                    if (turnedHead) {
-                        currentMode = pendingMode;
-                        turnedHead = false;
-                    }
-                } else if (currentMode == MovementMode::moveRight &&
-                           pixelUnitPos[0].x > nextCellToTurnHead.x) {
-                    pixelUnitPos[0] = nextCellToTurnHead;
-                    path.push_front({nextCellToTurn.x, nextCellToTurn.y});
-                    if (turnedHead) {
-                        currentMode = pendingMode;
-                        turnedHead = false;
-                    }
+                    crossed = true;
+
                 } else if (currentMode == MovementMode::moveLeft &&
-                           pixelUnitPos[0].x < nextCellToTurnHead.x) {
-                    pixelUnitPos[0] = nextCellToTurnHead;
-                    path.push_front({nextCellToTurn.x, nextCellToTurn.y});
+                           pixelUnitPos[0].x <= nextPixelTurnHead.x) {
+                    pixelUnitPos[0].x = nextPixelTurnHead.x;
+                    path.push_front({nextPixelTurnHead.x, nextPixelTurnHead.y});
                     if (turnedHead) {
                         currentMode = pendingMode;
                         turnedHead = false;
                     }
+                    crossed = true;
+
+                } else if (currentMode == MovementMode::moveDown &&
+                           pixelUnitPos[0].y >= nextPixelTurnHead.y) {
+                    pixelUnitPos[0].y = nextPixelTurnHead.y;
+                    path.push_front({pixelUnitPos[0].x, pixelUnitPos[0].y});
+                    if (turnedHead) {
+                        currentMode = pendingMode;
+                        turnedHead = false;
+                    }
+                    crossed = true;
+
+                } else if (currentMode == MovementMode::moveUp &&
+                           pixelUnitPos[0].y <= nextPixelTurnHead.y) {
+                    pixelUnitPos[0].y = nextPixelTurnHead.y;
+                    path.push_front({pixelUnitPos[0].x, pixelUnitPos[0].y});
+                    if (turnedHead) {
+                        currentMode = pendingMode;
+                        turnedHead = false;
+                    }
+                    crossed = true;
                 }
-                if (path.size() > pixelUnitPos.size()) {
-                    path.pop_back();
+
+                if (crossed) {
+                    const Vector2 advance = step(currentMode, cellSize);
+                    nextPixelTurnHead.x += advance.x;
+                    nextPixelTurnHead.y += advance.y;
+                    if (path.size() > pixelUnitPos.size()) {
+                        path.pop_back();
+                    }
+                    crossed = false;
                 }
             }
 
+            // TODO: smooth turn
             for (float i = 1; i < pixelUnitPos.size(); i++) {
-                pixelUnitPos[i] = {std::lerp(path[i].x, path[i - 1].x, unitFractionPosition.x),
-                                   std::lerp(path[i].y, path[i - 1].y, unitFractionPosition.y)};
+                if (currentMode == MovementMode::moveUp || currentMode == MovementMode::moveLeft) {
+                    pixelUnitPos[i] = {std::lerp(path[i - 1].x, path[i].x, unitFractionPosition.x),
+                                       std::lerp(path[i - 1].y, path[i].y, unitFractionPosition.y)};
+                }
+                if (currentMode == MovementMode::moveDown ||
+                    currentMode == MovementMode::moveRight) {
+                    pixelUnitPos[i] = {std::lerp(path[i].x, path[i - 1].x, unitFractionPosition.x),
+                                       std::lerp(path[i].y, path[i - 1].y, unitFractionPosition.y)};
+                }
             }
 
             moveSpeed(pixelUnitPos[0], currentMode, speed);
 
-            is_oob(pixelUnitPos, windowSize, dead,
-                   unitSize); // FIX: one hitbox calc affects another, either one + or -
-                              // achses work at a time
+            // is_oob(pixelUnitPos, windowSize, dead,
+            //        unitSize); // FIX: one hitbox calc affects another, either one + or -
+            //                   // achses work at a time
         }
 
         //----------------------------------------------------------------------------------
@@ -303,7 +319,7 @@ int main(void) {
             }
 
             drawGrid(collumns, rows, cellSize);
-            debugInfo(currentMode, pendingMode, speed, pixelUnitPos, nextCellToTurnHead,
+            debugInfo(currentMode, pendingMode, speed, pixelUnitPos, nextPixelTurnHead,
                       cellPosOfHead);
         }
 
