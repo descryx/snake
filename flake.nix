@@ -20,6 +20,7 @@
         devShells.default = pkgs.mkShell {
           buildInputs = [
             pkgs.raylib
+            pkgs.raygui
             pkgs.gnumake
             pkgs.gcc
           ];
