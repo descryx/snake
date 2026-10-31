@@ -2,6 +2,8 @@
 #define RAYGUI_IMPLEMENTATION
 #include "raygui.h"
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 #include <deque>
 #include <vector>
 
@@ -16,6 +18,9 @@ struct GameState {
     float speed = 20.0f;
     bool dead = false;
     bool turnPending = false;
+    int randomX = 4;
+    int randomY = 0;
+    bool ateApple = false;
 };
 
 struct Config {
@@ -37,7 +42,7 @@ Config makeConfig(const Vector2 &windowSize) {
 }
 
 struct UiState {
-    bool debug = false;
+    bool debug = true;
     bool settingsOpen = false;
 };
 
@@ -109,12 +114,15 @@ void isOob(GameState &gs, const Config &cfg) {
 }
 void drawGrid(const Config &cfg) {
     for (int i = 0; i <= cfg.columns; i++) { // FIX: make it draw the missing edge line
-        DrawLineV({i * cfg.cellSize.x, 0}, {i * cfg.cellSize.x, cfg.rows * cfg.cellSize.y}, PINK);
+        DrawLineV({i * cfg.cellSize.x, 0}, {i * cfg.cellSize.x, cfg.rows * cfg.cellSize.y}, GRAY);
     }
+    DrawLineV({1, 0}, {1, cfg.windowSize.y}, GRAY);
+
     for (int i = 0; i <= cfg.rows; i++) {
         DrawLineV({0, i * cfg.cellSize.y}, {cfg.columns * cfg.cellSize.x, i * cfg.cellSize.y},
-                  PINK);
+                  GRAY);
     }
+    DrawLineV({0, cfg.windowSize.y - 1}, {cfg.windowSize.x, cfg.windowSize.y - 1}, GRAY);
 }
 
 const char *modeName(MovementMode m) {
@@ -131,18 +139,21 @@ const char *modeName(MovementMode m) {
     return "?";
 }
 void drawDebugInfo(const GameState &gs, const Config &cfg, const FrameState &fs) {
-    // FIX: okay... genuenly wtf is this u bummass
 
     DrawText(
         TextFormat("current:  %s\npending: %s", modeName(gs.currentMode), modeName(gs.pendingMode)),
-        50, 50, 18, GREEN);
-    DrawText(TextFormat("speed: %f", gs.speed), 50, 100, 18, GREEN);
+        50, 50, 18, WHITE);
+
+    DrawText(TextFormat("speed: %f", gs.speed), 50, 100, 18, WHITE);
+
     DrawText(TextFormat("UnitPos \nX: %f\nY: %f", gs.pxUnitPos[0].x, gs.pxUnitPos[0].y), 50, 150,
-             18, GREEN);
+             18, WHITE);
+
     DrawText(TextFormat("cellPos: X = %f\nY = %f\nnewTile: X = %f\nY = %f", fs.cellPosOfHead.x,
                         fs.cellPosOfHead.y, gs.nextPxTurnHead.x, gs.nextPxTurnHead.y),
-             50, 250, 18, GREEN);
-    DrawText(TextFormat("unit Amount: %i", gs.pxUnitPos.size()), 50, 350, 18, GREEN);
+             50, 250, 18, WHITE);
+
+    DrawText(TextFormat("unit Amount: %i", gs.pxUnitPos.size()), 50, 350, 18, WHITE);
 
     for ([[maybe_unused]] Vector2 vec2 : gs.pxUnitPos) {
         DrawRectangle(vec2.x, vec2.y, cfg.unitSize.x - (cfg.unitSize.x / 100 * 75),
@@ -150,22 +161,32 @@ void drawDebugInfo(const GameState &gs, const Config &cfg, const FrameState &fs)
         DrawRectangle(vec2.x, vec2.y, cfg.unitSize.x - (cfg.unitSize.x / 100 * 90),
                       cfg.unitSize.y - (cfg.unitSize.y / 100 * 75), BLUE);
     }
+
     for (int i = 0; i <= cfg.columns; i++) {
         for (int x = 0; x <= cfg.rows; x++) {
             DrawRectangle(i * cfg.cellSize.x, x * cfg.cellSize.y, 5, 5, SKYBLUE);
         }
     }
+
+    DrawText(TextFormat("Apple Cell pos\nX: %i\nY: %i", gs.randomX, gs.randomY), 50, 400, 18,
+             WHITE);
+    // TODO: add for loop and declare beforehand waht params to draw.
+    // then loop thru them
+    //
+    DrawText(TextFormat("4th body Cell pos\nX: %f\nY: %f", gs.pxUnitPos[3].x / cfg.cellSize.x,
+                        gs.pxUnitPos[3].y / cfg.cellSize.y),
+             50, 475, 18, WHITE);
 }
 
-MovementMode oppositeDir(GameState &gs) {
+MovementMode oppositeDir(MovementMode &modeToEvaluate) {
 
-    if (gs.pendingMode == MovementMode::moveDown) {
+    if (modeToEvaluate == MovementMode::moveDown) {
         return MovementMode::moveUp;
-    } else if (gs.pendingMode == MovementMode::moveUp) {
+    } else if (modeToEvaluate == MovementMode::moveUp) {
         return MovementMode::moveDown;
-    } else if (gs.pendingMode == MovementMode::moveRight) {
+    } else if (modeToEvaluate == MovementMode::moveRight) {
         return MovementMode::moveLeft;
-    } else if (gs.pendingMode == MovementMode::moveLeft) {
+    } else if (modeToEvaluate == MovementMode::moveLeft) {
         return MovementMode::moveRight;
     }
     return MovementMode::moveRight; // idk if its okay to do so
@@ -187,23 +208,21 @@ Vector2 step(const MovementMode &m, const Vector2 &cellSize) {
 
 void addUnit(GameState &gs, const Config &cfg) {
 
-    if (IsKeyPressed(KEY_A)) {
-        if (gs.currentMode == MovementMode::moveDown) {
-            gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x,
-                                    gs.pxUnitPos[gs.pxUnitPos.size() - 1].y - cfg.cellSize.y});
+    if (gs.currentMode == MovementMode::moveDown) {
+        gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x,
+                                gs.pxUnitPos[gs.pxUnitPos.size() - 1].y - cfg.cellSize.y});
 
-        } else if (gs.currentMode == MovementMode::moveUp) {
-            gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x,
-                                    gs.pxUnitPos[gs.pxUnitPos.size() - 1].y + cfg.cellSize.y});
+    } else if (gs.currentMode == MovementMode::moveUp) {
+        gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x,
+                                gs.pxUnitPos[gs.pxUnitPos.size() - 1].y + cfg.cellSize.y});
 
-        } else if (gs.currentMode == MovementMode::moveRight) {
-            gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x - cfg.cellSize.x,
-                                    gs.pxUnitPos[gs.pxUnitPos.size() - 1].y});
+    } else if (gs.currentMode == MovementMode::moveRight) {
+        gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x - cfg.cellSize.x,
+                                gs.pxUnitPos[gs.pxUnitPos.size() - 1].y});
 
-        } else if (gs.currentMode == MovementMode::moveLeft) {
-            gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x + cfg.cellSize.x,
-                                    gs.pxUnitPos[gs.pxUnitPos.size() - 1].y});
-        }
+    } else if (gs.currentMode == MovementMode::moveLeft) {
+        gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x + cfg.cellSize.x,
+                                gs.pxUnitPos[gs.pxUnitPos.size() - 1].y});
     }
 }
 
@@ -215,18 +234,53 @@ void keybinds(GameState &gs, const Config &cfg) {
         gs.speed += 10;
     }
 
-    addUnit(gs, cfg);
+    if (IsKeyPressed(KEY_A)) {
+        addUnit(gs, cfg);
+    }
 }
 
 void crossAndTurn(GameState &gs, FrameState &fs) {
 
     gs.pxUnitPos[0] = gs.nextPxTurnHead;
     gs.path.push_front({gs.nextPxTurnHead.x, gs.nextPxTurnHead.y});
-    if (gs.turnPending) {
+    if (gs.turnPending && gs.currentMode != oppositeDir(gs.pendingMode)) {
         gs.currentMode = gs.pendingMode;
         gs.turnPending = false;
     }
     fs.crossed = true;
+}
+
+void appleSpwnNdEat(GameState &gs, const Config &cfg) {
+    srand(time(0));
+
+    // FIX: make pixel accurate (need direction awarenes)
+    if (round(gs.pxUnitPos[0].x / cfg.cellSize.x) == gs.randomX &&
+        round(gs.pxUnitPos[0].y / cfg.cellSize.y) == gs.randomY) {
+        gs.randomX = rand() % cfg.columns;
+        gs.randomY = rand() % cfg.rows;
+
+        addUnit(gs, cfg);
+        gs.ateApple = true;
+    }
+    if (gs.pxUnitPos.size() % 2 == 0 && gs.ateApple) {
+        gs.speed += 5;
+        gs.ateApple = false;
+    }
+}
+
+void checkSelfCollision(GameState &gs, const Config &cfg) {
+
+    // FIX: when head cell == 0,0 then dead. idk.
+    // some kind of rounding problem.
+    for (size_t i = 4; i <= gs.pxUnitPos.size(); i++) {
+        if (round(gs.pxUnitPos[0].x / cfg.cellSize.x) ==
+                round(gs.pxUnitPos[i].x / cfg.cellSize.x) &&
+            round(gs.pxUnitPos[0].y / cfg.cellSize.y) ==
+                round(gs.pxUnitPos[i].y / cfg.cellSize.y)) {
+
+            gs.dead = true;
+        }
+    }
 }
 
 int main(void) {
@@ -243,11 +297,29 @@ int main(void) {
     SetTargetFPS(60);
 
     gs.pxUnitPos.push_back(
-        {roundf(cfg.columns / 2) * cfg.cellSize.x, roundf(cfg.rows / 2) * cfg.cellSize.y});
+        {floor(cfg.columns / 2.0f) * cfg.cellSize.x, floor(cfg.rows / 2.0f) * cfg.cellSize.y});
+
     gs.nextPxTurnHead = {gs.pxUnitPos[0].x + cfg.cellSize.x, gs.pxUnitPos[0].y};
     gs.path.push_back(gs.pxUnitPos[0]);
 
+    gs.randomX += floor(cfg.columns / 2.0f);
+    gs.randomY += floor(cfg.rows / 2.0f);
+
+    // TODO: playfield
+    //  int dropdownBoxActive = 0;
+    //  bool dropDownEditMode = false;
+
     while (!WindowShouldClose()) {
+
+        // TODO: make playfield size adjustable (choose from)
+        //
+        //  if (dropdownBoxActive == 0) {
+        //      cfg = makeConfig(windowSize);
+        //  } else if (dropdownBoxActive == 1) {
+        //      windowSize.x *= 2;
+        //      windowSize.y *= 2;
+        //      cfg = makeConfig(windowSize);
+        //  }
 
         if (IsKeyPressed(KEY_O) && !uis.settingsOpen) {
             uis.settingsOpen = true;
@@ -269,35 +341,32 @@ int main(void) {
             fs.cellFraction = {fs.cellPosOfHead.x - floorf(fs.cellPosOfHead.x),
                                fs.cellPosOfHead.y - floorf(fs.cellPosOfHead.y)};
 
-            if (moveKeys(gs.pendingMode)) {
+            if (!gs.turnPending && moveKeys(gs.pendingMode)) {
                 gs.turnPending = true;
             }
 
-            if (gs.currentMode != oppositeDir(gs)) {
+            if (gs.currentMode == MovementMode::moveRight &&
+                gs.pxUnitPos[0].x >= gs.nextPxTurnHead.x) {
+                crossAndTurn(gs, fs);
+            } else if (gs.currentMode == MovementMode::moveLeft &&
+                       gs.pxUnitPos[0].x <= gs.nextPxTurnHead.x) {
+                crossAndTurn(gs, fs);
+            } else if (gs.currentMode == MovementMode::moveDown &&
+                       gs.pxUnitPos[0].y >= gs.nextPxTurnHead.y) {
+                crossAndTurn(gs, fs);
+            } else if (gs.currentMode == MovementMode::moveUp &&
+                       gs.pxUnitPos[0].y <= gs.nextPxTurnHead.y) {
+                crossAndTurn(gs, fs);
+            }
 
-                if (gs.currentMode == MovementMode::moveRight &&
-                    gs.pxUnitPos[0].x >= gs.nextPxTurnHead.x) {
-                    crossAndTurn(gs, fs);
-                } else if (gs.currentMode == MovementMode::moveLeft &&
-                           gs.pxUnitPos[0].x <= gs.nextPxTurnHead.x) {
-                    crossAndTurn(gs, fs);
-                } else if (gs.currentMode == MovementMode::moveDown &&
-                           gs.pxUnitPos[0].y >= gs.nextPxTurnHead.y) {
-                    crossAndTurn(gs, fs);
-                } else if (gs.currentMode == MovementMode::moveUp &&
-                           gs.pxUnitPos[0].y <= gs.nextPxTurnHead.y) {
-                    crossAndTurn(gs, fs);
+            if (fs.crossed) {
+                const Vector2 advance = step(gs.currentMode, cfg.cellSize);
+                gs.nextPxTurnHead.x += advance.x;
+                gs.nextPxTurnHead.y += advance.y;
+                if (gs.path.size() > gs.pxUnitPos.size()) {
+                    gs.path.pop_back();
                 }
-
-                if (fs.crossed) {
-                    const Vector2 advance = step(gs.currentMode, cfg.cellSize);
-                    gs.nextPxTurnHead.x += advance.x;
-                    gs.nextPxTurnHead.y += advance.y;
-                    if (gs.path.size() > gs.pxUnitPos.size()) {
-                        gs.path.pop_back();
-                    }
-                    fs.crossed = false;
-                }
+                fs.crossed = false;
             }
 
             for (float i = 1; i < gs.pxUnitPos.size(); i++) {
@@ -324,54 +393,71 @@ int main(void) {
 
             isOob(gs, cfg);
 
-            // TODO: add self collisions
+            appleSpwnNdEat(gs, cfg);
+
+            checkSelfCollision(gs, cfg);
         }
 
         //----------------------------------------------------------------------------------
         BeginDrawing();
+        Color myTintSettings = {0, 0, 0, 128};
+        Color myTintDead = {0, 0, 0, 170};
 
         ClearBackground(BLACK);
         const Vector2 btn = halfCell(cfg);
+        drawGrid(cfg);
+        DrawText("press <O> for settings and tutor", btn.x * 24, btn.y * 0.5, 16, WHITE);
+        for ([[maybe_unused]] Vector2 vec2 : gs.pxUnitPos) {
+            DrawRectangle(vec2.x + cfg.unitGapFromLines.x, vec2.y + cfg.unitGapFromLines.y,
+                          cfg.unitSize.x, cfg.unitSize.y, RED);
+        }
+        DrawRectangle(gs.randomX * cfg.cellSize.x + cfg.unitGapFromLines.x,
+                      gs.randomY * cfg.cellSize.y + cfg.unitGapFromLines.y, cfg.unitSize.x,
+                      cfg.unitSize.y, GREEN);
 
+        if (uis.debug) {
+            drawDebugInfo(gs, cfg, fs);
+        }
         if (uis.settingsOpen) {
+            DrawRectangle(0, 0, cfg.windowSize.x / 4, cfg.windowSize.y, BLACK);
+            DrawRectangle(0, 0, cfg.windowSize.x, cfg.windowSize.y, myTintSettings);
+
             GuiCheckBox((Rectangle){btn.x * 1, btn.y * 1, 50, 50}, "DebugInfo", &uis.debug);
+
+            // TODO: playfield
+            //  if (GuiDropdownBox((Rectangle){btn.x * 1, btn.y * 3, 100, 50},
+            //  "ONE;TWO;THREE;FOUR",
+            //                     &dropdownBoxActive, dropDownEditMode))
+            //      dropDownEditMode = !dropDownEditMode;
 
             if (GuiButton((Rectangle){btn.x * 1, btn.y * 16, 150, 50}, "save & exit") ||
                 IsKeyPressed(KEY_S)) {
                 uis.settingsOpen = false;
             }
         }
+        if (gs.dead) {
 
-        if (!uis.settingsOpen) {
-            if (gs.dead) {
-                DrawText("skill issue\n", (windowSize.x / 2) - 50, (windowSize.y / 2) - 25, 24,
-                         WHITE);
+            DrawText("skill issue\n", (windowSize.x / 2) - 50, (windowSize.y / 2) - 25, 24, WHITE);
+            DrawRectangle(0, 0, cfg.windowSize.x, cfg.windowSize.y, myTintDead);
 
-                if (GuiButton((Rectangle){(windowSize.x / 2) - 50, (windowSize.y / 2) - 25 + 250,
-                                          100, 50},
-                              "restart") ||
-                    IsKeyPressed(KEY_R)) {
+            if (GuiButton(
+                    (Rectangle){(windowSize.x / 2) - 50, (windowSize.y / 2) - 25 + 250, 100, 50},
+                    "restart") ||
+                IsKeyPressed(KEY_R)) {
 
-                    gs = GameState{};
+                gs = GameState{};
+                // FIX: i believe this spawns the head in off by 1 down
 
-                    // FIX: need to manage:
-                    gs.pxUnitPos.clear();
-                    gs.pxUnitPos.push_back({roundf(cfg.columns / 2) * cfg.cellSize.x,
-                                            roundf(cfg.rows / 2) * cfg.cellSize.y});
-                    gs.nextPxTurnHead = {gs.pxUnitPos[0].x + cfg.cellSize.x, gs.pxUnitPos[0].y};
-                }
+                // FIX: need to manage:
+                // maybe add bool for them to run at start
 
-            } else {
-                DrawText("press <O> for settings and tutor", btn.x * 24, btn.y * 0.5, 16, WHITE);
-                for ([[maybe_unused]] Vector2 vec2 : gs.pxUnitPos) {
-                    DrawRectangle(vec2.x + cfg.unitGapFromLines.x, vec2.y + cfg.unitGapFromLines.y,
-                                  cfg.unitSize.x, cfg.unitSize.y, RED);
-                }
-                drawGrid(cfg);
+                gs.randomX += floor(cfg.columns / 2.0f);
+                gs.randomY += floor(cfg.rows / 2.0f);
 
-                if (uis.debug) {
-                    drawDebugInfo(gs, cfg, fs);
-                }
+                gs.pxUnitPos.clear();
+                gs.pxUnitPos.push_back({roundf(cfg.columns / 2.0f) * cfg.cellSize.x,
+                                        roundf(cfg.rows / 2.0f) * cfg.cellSize.y});
+                gs.nextPxTurnHead = {gs.pxUnitPos[0].x + cfg.cellSize.x, gs.pxUnitPos[0].y};
             }
         }
         EndDrawing();
