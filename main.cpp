@@ -18,13 +18,14 @@ struct GameState {
     float speed = 20.0f;
     bool dead = false;
     bool turnPending = false;
-    int randomX = 4;
+    int randomX = 3;
     int randomY = 0;
     bool ateApple = false;
+    bool pause = false;
 };
 
 struct Config {
-    int columns = 16.0f;
+    int columns = 9.0f;
     int rows = 9.0f;
     Vector2 windowSize = {};
     Vector2 cellSize = {};
@@ -78,7 +79,6 @@ bool moveKeys(MovementMode &currentMode) {
     return false;
 }
 
-// void moveSpeed(Vector2 &pixelUnitPos, const MovementMode &currentMode, const float &speed) {
 void moveSpeed(GameState &gs) {
     const float move = GetFrameTime() * 6.0f * gs.speed;
 
@@ -100,15 +100,16 @@ void moveSpeed(GameState &gs) {
 
 void isOob(GameState &gs, const Config &cfg) {
 
-    if (gs.pxUnitPos[0].x + cfg.unitSize.x + ((cfg.cellSize.x - cfg.unitSize.x) / 2) >
-            cfg.windowSize.x ||
+    if (!CheckCollisionPointRec({gs.pxUnitPos[0].x + cfg.unitGapFromLines.x,
+                                 gs.pxUnitPos[0].y + cfg.unitGapFromLines.y},
+                                (Rectangle){0, 0, cfg.windowSize.x, cfg.windowSize.y})) {
 
-        gs.pxUnitPos[0].x + ((cfg.cellSize.x - cfg.unitSize.x) / 2) < 0 ||
+        gs.dead = true;
+    } else if (!CheckCollisionPointRec(
+                   {gs.pxUnitPos[0].x + cfg.unitGapFromLines.x + cfg.unitSize.x,
+                    gs.pxUnitPos[0].y + cfg.unitGapFromLines.y + cfg.unitSize.y},
+                   (Rectangle){0, 0, cfg.windowSize.x, cfg.windowSize.y})) {
 
-        gs.pxUnitPos[0].y + cfg.unitSize.y + ((cfg.cellSize.y - cfg.unitSize.y) / 2) >
-            cfg.windowSize.y ||
-
-        gs.pxUnitPos[0].y + ((cfg.cellSize.x - cfg.unitSize.x) / 2) < 0) {
         gs.dead = true;
     }
 }
@@ -273,19 +274,38 @@ void checkSelfCollision(GameState &gs, const Config &cfg) {
     // FIX: when head cell == 0,0 then dead. idk.
     // some kind of rounding problem.
     for (size_t i = 4; i <= gs.pxUnitPos.size(); i++) {
-        if (round(gs.pxUnitPos[0].x / cfg.cellSize.x) ==
-                round(gs.pxUnitPos[i].x / cfg.cellSize.x) &&
-            round(gs.pxUnitPos[0].y / cfg.cellSize.y) ==
-                round(gs.pxUnitPos[i].y / cfg.cellSize.y)) {
 
+        if (CheckCollisionRecs((Rectangle){gs.pxUnitPos[0].x + cfg.unitGapFromLines.x,
+                                           gs.pxUnitPos[0].y + cfg.unitGapFromLines.y,
+                                           cfg.unitSize.x, cfg.unitSize.y},
+                               (Rectangle){gs.pxUnitPos[i].x + cfg.unitGapFromLines.x,
+                                           gs.pxUnitPos[i].y + cfg.unitGapFromLines.y,
+                                           cfg.unitSize.x, cfg.unitSize.y})) {
             gs.dead = true;
         }
     }
 }
 
+void setup(GameState &gs, const Config &cfg) {
+
+    gs = GameState{};
+
+    // FIX: need to manage:
+    // maybe add bool for them to run at start
+
+    gs.randomX += floor(cfg.columns / 2.0f);
+    gs.randomY += floor(cfg.rows / 2.0f);
+
+    gs.pxUnitPos.clear();
+    gs.pxUnitPos.push_back(
+        {floor(cfg.columns / 2.0f) * cfg.cellSize.x, floor(cfg.rows / 2.0f) * cfg.cellSize.y});
+    gs.nextPxTurnHead = {gs.pxUnitPos[0].x + cfg.cellSize.x, gs.pxUnitPos[0].y};
+}
+
 int main(void) {
 
-    Vector2 windowSize = {((1920.0f / 100) * 62.5), ((1080.0f / 100) * 62.5)};
+    // Vector2 windowSize = {((1920.0f / 100) * 62.5), ((1080.0f / 100) * 62.5)};
+    Vector2 windowSize = {720, 720};
 
     GameState gs;
     const Config cfg = makeConfig(windowSize);
@@ -296,20 +316,15 @@ int main(void) {
 
     SetTargetFPS(60);
 
-    gs.pxUnitPos.push_back(
-        {floor(cfg.columns / 2.0f) * cfg.cellSize.x, floor(cfg.rows / 2.0f) * cfg.cellSize.y});
+    setup(gs, cfg);
 
-    gs.nextPxTurnHead = {gs.pxUnitPos[0].x + cfg.cellSize.x, gs.pxUnitPos[0].y};
-    gs.path.push_back(gs.pxUnitPos[0]);
-
-    gs.randomX += floor(cfg.columns / 2.0f);
-    gs.randomY += floor(cfg.rows / 2.0f);
+    // gs.path.push_back(gs.pxUnitPos[0]);
 
     // TODO: playfield
     //  int dropdownBoxActive = 0;
     //  bool dropDownEditMode = false;
 
-    while (!WindowShouldClose()) {
+    while (true) {
 
         // TODO: make playfield size adjustable (choose from)
         //
@@ -325,14 +340,21 @@ int main(void) {
             uis.settingsOpen = true;
         }
 
+        if (IsKeyPressed(KEY_P)) {
+            if (!gs.pause) {
+                gs.pause = true;
+            } else {
+                gs.pause = false;
+            }
+        }
+
         if (IsKeyPressed(KEY_Q)) {
             break;
         }
 
         keybinds(gs, cfg);
 
-        if (IsWindowFocused() && !gs.dead && !uis.settingsOpen) {
-
+        if (IsWindowFocused() && !gs.dead && !uis.settingsOpen && !gs.pause) {
             fs.cellPosOfHead = {
                 gs.pxUnitPos[0].x / cfg.cellSize.x,
                 gs.pxUnitPos[0].y / cfg.cellSize.y,
@@ -402,26 +424,60 @@ int main(void) {
         BeginDrawing();
         Color myTintSettings = {0, 0, 0, 128};
         Color myTintDead = {0, 0, 0, 170};
+        Color coinBg = {205, 170, 0, 255};
+        Color coinFg = {255, 205, 0, 255};
+        // TODO: add connected snake body. make body connected from head to tail.
 
         ClearBackground(BLACK);
         const Vector2 btn = halfCell(cfg);
+
         drawGrid(cfg);
         DrawText("press <O> for settings and tutor", btn.x * 24, btn.y * 0.5, 16, WHITE);
         for ([[maybe_unused]] Vector2 vec2 : gs.pxUnitPos) {
-            DrawRectangle(vec2.x + cfg.unitGapFromLines.x, vec2.y + cfg.unitGapFromLines.y,
-                          cfg.unitSize.x, cfg.unitSize.y, RED);
+            DrawRectangleRounded((Rectangle){vec2.x + cfg.unitGapFromLines.x,
+                                             vec2.y + cfg.unitGapFromLines.y, cfg.unitSize.x,
+                                             cfg.unitSize.y},
+                                 0.4f, 100, RED);
         }
-        DrawRectangle(gs.randomX * cfg.cellSize.x + cfg.unitGapFromLines.x,
-                      gs.randomY * cfg.cellSize.y + cfg.unitGapFromLines.y, cfg.unitSize.x,
-                      cfg.unitSize.y, GREEN);
+        DrawRectangleRounded(
+            (Rectangle){gs.pxUnitPos[0].x + cfg.unitGapFromLines.x + (cfg.unitSize.x / 5),
+                        gs.pxUnitPos[0].y + cfg.unitGapFromLines.y + (cfg.unitSize.y / 5),
+                        cfg.unitSize.x / 5, cfg.unitSize.y / 5},
+            0.4f, 100, GREEN);
+        DrawRectangleRounded(
+            (Rectangle){gs.pxUnitPos[0].x + cfg.unitGapFromLines.x + (cfg.unitSize.x / 5) * 3,
+                        gs.pxUnitPos[0].y + cfg.unitGapFromLines.y + (cfg.unitSize.y / 5),
+                        cfg.unitSize.x / 5, cfg.unitSize.y / 5},
+            0.4f, 100, GREEN);
+
+        // TODO: smile :)
+        //  Vector2 splinePoints[3] = {
+        //      // start
+        //      {gs.pxUnitPos[0].x + cfg.unitGapFromLines.x,
+        //       gs.pxUnitPos[0].y + cfg.unitGapFromLines.y},
+        //
+        //      // mid
+        //      {gs.pxUnitPos[0].x + cfg.cellSize.x / 2, gs.pxUnitPos[0].y + cfg.cellSize.y / 2},
+        //
+        //      // end
+        //      {gs.pxUnitPos[0].x + cfg.unitGapFromLines.x + cfg.cellSize.x,
+        //       gs.pxUnitPos[0].y + cfg.unitGapFromLines.y},
+        //  };
+        // DrawSplineBezierQuadratic(splinePoints, 3, 4.0f, ORANGE);
+
+        DrawCircle(gs.randomX * cfg.cellSize.x + btn.x, gs.randomY * cfg.cellSize.y + btn.y,
+                   btn.x - cfg.unitGapFromLines.x, coinBg);
+        DrawCircleLinesEx(
+            {gs.randomX * cfg.cellSize.x + btn.x, gs.randomY * cfg.cellSize.y + btn.y},
+            btn.x - cfg.unitGapFromLines.x, 5, coinFg);
 
         if (uis.debug) {
             drawDebugInfo(gs, cfg, fs);
         }
         if (uis.settingsOpen) {
-            DrawRectangle(0, 0, cfg.windowSize.x / 4, cfg.windowSize.y, BLACK);
             DrawRectangle(0, 0, cfg.windowSize.x, cfg.windowSize.y, myTintSettings);
 
+            DrawRectangle(btn.x * 1, btn.y * 1, 150, 50, BLACK);
             GuiCheckBox((Rectangle){btn.x * 1, btn.y * 1, 50, 50}, "DebugInfo", &uis.debug);
 
             // TODO: playfield
@@ -431,12 +487,11 @@ int main(void) {
             //      dropDownEditMode = !dropDownEditMode;
 
             if (GuiButton((Rectangle){btn.x * 1, btn.y * 16, 150, 50}, "save & exit") ||
-                IsKeyPressed(KEY_S)) {
+                IsKeyPressed(KEY_S) || IsKeyPressed(KEY_CAPS_LOCK)) {
                 uis.settingsOpen = false;
             }
         }
         if (gs.dead) {
-
             DrawText("skill issue\n", (windowSize.x / 2) - 50, (windowSize.y / 2) - 25, 24, WHITE);
             DrawRectangle(0, 0, cfg.windowSize.x, cfg.windowSize.y, myTintDead);
 
@@ -444,20 +499,7 @@ int main(void) {
                     (Rectangle){(windowSize.x / 2) - 50, (windowSize.y / 2) - 25 + 250, 100, 50},
                     "restart") ||
                 IsKeyPressed(KEY_R)) {
-
-                gs = GameState{};
-                // FIX: i believe this spawns the head in off by 1 down
-
-                // FIX: need to manage:
-                // maybe add bool for them to run at start
-
-                gs.randomX += floor(cfg.columns / 2.0f);
-                gs.randomY += floor(cfg.rows / 2.0f);
-
-                gs.pxUnitPos.clear();
-                gs.pxUnitPos.push_back({roundf(cfg.columns / 2.0f) * cfg.cellSize.x,
-                                        roundf(cfg.rows / 2.0f) * cfg.cellSize.y});
-                gs.nextPxTurnHead = {gs.pxUnitPos[0].x + cfg.cellSize.x, gs.pxUnitPos[0].y};
+                setup(gs, cfg);
             }
         }
         EndDrawing();
