@@ -174,9 +174,6 @@ void drawDebugInfo(const GameState &gs, const Config &cfg, const FrameState &fs)
     // TODO: add for loop and declare beforehand waht params to draw.
     // then loop thru them
     //
-    DrawText(TextFormat("4th body Cell pos\nX: %f\nY: %f", gs.pxUnitPos[3].x / cfg.cellSize.x,
-                        gs.pxUnitPos[3].y / cfg.cellSize.y),
-             50, 475, 18, WHITE);
 }
 
 MovementMode oppositeDir(MovementMode &modeToEvaluate) {
@@ -209,6 +206,7 @@ Vector2 step(const MovementMode &m, const Vector2 &cellSize) {
 
 void addUnit(GameState &gs, const Config &cfg) {
 
+    // FIX: need path init to avoid 00 spawns on KEY_A
     if (gs.currentMode == MovementMode::moveDown) {
         gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x,
                                 gs.pxUnitPos[gs.pxUnitPos.size() - 1].y - cfg.cellSize.y});
@@ -252,11 +250,10 @@ void crossAndTurn(GameState &gs, FrameState &fs) {
 }
 
 void appleSpwnNdEat(GameState &gs, const Config &cfg) {
-    srand(time(0));
 
-    // FIX: make pixel accurate (need direction awarenes)
-    if (round(gs.pxUnitPos[0].x / cfg.cellSize.x) == gs.randomX &&
-        round(gs.pxUnitPos[0].y / cfg.cellSize.y) == gs.randomY) {
+    if (floor(gs.pxUnitPos[0].x / cfg.cellSize.x) == gs.randomX &&
+        floor(gs.pxUnitPos[0].y / cfg.cellSize.y) == gs.randomY) {
+
         gs.randomX = rand() % cfg.columns;
         gs.randomY = rand() % cfg.rows;
 
@@ -271,9 +268,7 @@ void appleSpwnNdEat(GameState &gs, const Config &cfg) {
 
 void checkSelfCollision(GameState &gs, const Config &cfg) {
 
-    // FIX: when head cell == 0,0 then dead. idk.
-    // some kind of rounding problem.
-    for (size_t i = 4; i <= gs.pxUnitPos.size(); i++) {
+    for (size_t i = 4; i < gs.pxUnitPos.size(); i++) {
 
         if (CheckCollisionRecs((Rectangle){gs.pxUnitPos[0].x + cfg.unitGapFromLines.x,
                                            gs.pxUnitPos[0].y + cfg.unitGapFromLines.y,
@@ -292,7 +287,6 @@ void setup(GameState &gs, const Config &cfg) {
 
     // FIX: need to manage:
     // maybe add bool for them to run at start
-
     gs.randomX += floor(cfg.columns / 2.0f);
     gs.randomY += floor(cfg.rows / 2.0f);
 
@@ -317,6 +311,7 @@ int main(void) {
     SetTargetFPS(60);
 
     setup(gs, cfg);
+    srand(time(0));
 
     // gs.path.push_back(gs.pxUnitPos[0]);
 
@@ -380,6 +375,9 @@ int main(void) {
                        gs.pxUnitPos[0].y <= gs.nextPxTurnHead.y) {
                 crossAndTurn(gs, fs);
             }
+            if (fs.crossed) {
+                appleSpwnNdEat(gs, cfg);
+            }
 
             if (fs.crossed) {
                 const Vector2 advance = step(gs.currentMode, cfg.cellSize);
@@ -414,8 +412,6 @@ int main(void) {
             moveSpeed(gs);
 
             isOob(gs, cfg);
-
-            appleSpwnNdEat(gs, cfg);
 
             checkSelfCollision(gs, cfg);
         }
