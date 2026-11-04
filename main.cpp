@@ -190,6 +190,7 @@ MovementMode oppositeDir(MovementMode &modeToEvaluate) {
     return MovementMode::moveRight; // idk if its okay to do so
 }
 
+// FIX: make use of ts and get rid of redundant if else movedirs
 Vector2 step(const MovementMode &m, const Vector2 &cellSize) {
     switch (m) {
     case MovementMode::moveLeft:
@@ -207,22 +208,10 @@ Vector2 step(const MovementMode &m, const Vector2 &cellSize) {
 void addUnit(GameState &gs, const Config &cfg) {
 
     // FIX: need path init to avoid 00 spawns on KEY_A
-    if (gs.currentMode == MovementMode::moveDown) {
-        gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x,
-                                gs.pxUnitPos[gs.pxUnitPos.size() - 1].y - cfg.cellSize.y});
 
-    } else if (gs.currentMode == MovementMode::moveUp) {
-        gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x,
-                                gs.pxUnitPos[gs.pxUnitPos.size() - 1].y + cfg.cellSize.y});
-
-    } else if (gs.currentMode == MovementMode::moveRight) {
-        gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x - cfg.cellSize.x,
-                                gs.pxUnitPos[gs.pxUnitPos.size() - 1].y});
-
-    } else if (gs.currentMode == MovementMode::moveLeft) {
-        gs.pxUnitPos.push_back({gs.pxUnitPos[gs.pxUnitPos.size() - 1].x + cfg.cellSize.x,
-                                gs.pxUnitPos[gs.pxUnitPos.size() - 1].y});
-    }
+    const Vector2 s = step(gs.currentMode, cfg.cellSize);
+    gs.path.push_back({gs.path.back().x - s.x, gs.path.back().y - s.y});
+    gs.pxUnitPos.push_back({gs.pxUnitPos.back()});
 }
 
 void keybinds(GameState &gs, const Config &cfg) {
@@ -254,8 +243,16 @@ void appleSpwnNdEat(GameState &gs, const Config &cfg) {
     if (floor(gs.pxUnitPos[0].x / cfg.cellSize.x) == gs.randomX &&
         floor(gs.pxUnitPos[0].y / cfg.cellSize.y) == gs.randomY) {
 
-        gs.randomX = rand() % cfg.columns;
-        gs.randomY = rand() % cfg.rows;
+        int randx = rand() % cfg.columns;
+        int randy = rand() % cfg.rows;
+
+        for (const Vector2 &vec2 : gs.path) {
+            if (floor(vec2.x / cfg.cellSize.x) != randx &&
+                floor(vec2.y / cfg.cellSize.y) != randy) {
+                gs.randomX = randx;
+                gs.randomY = randy;
+            }
+        }
 
         addUnit(gs, cfg);
         gs.ateApple = true;
@@ -294,6 +291,8 @@ void setup(GameState &gs, const Config &cfg) {
     gs.pxUnitPos.push_back(
         {floor(cfg.columns / 2.0f) * cfg.cellSize.x, floor(cfg.rows / 2.0f) * cfg.cellSize.y});
     gs.nextPxTurnHead = {gs.pxUnitPos[0].x + cfg.cellSize.x, gs.pxUnitPos[0].y};
+    gs.path.push_front(
+        {floor(cfg.columns / 2.0f) * cfg.cellSize.x, floor(cfg.rows / 2.0f) * cfg.cellSize.y});
 }
 
 int main(void) {
