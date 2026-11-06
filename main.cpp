@@ -206,9 +206,6 @@ Vector2 step(const MovementMode &m, const Vector2 &cellSize) {
 }
 
 void addUnit(GameState &gs, const Config &cfg) {
-
-    // FIX: need path init to avoid 00 spawns on KEY_A
-
     const Vector2 s = step(gs.currentMode, cfg.cellSize);
     gs.path.push_back({gs.path.back().x - s.x, gs.path.back().y - s.y});
     gs.pxUnitPos.push_back({gs.pxUnitPos.back()});
@@ -242,24 +239,30 @@ void appleSpwnNdEat(GameState &gs, const Config &cfg) {
 
     if (floor(gs.pxUnitPos[0].x / cfg.cellSize.x) == gs.randomX &&
         floor(gs.pxUnitPos[0].y / cfg.cellSize.y) == gs.randomY) {
-
         int randx = rand() % cfg.columns;
         int randy = rand() % cfg.rows;
 
-        for (const Vector2 &vec2 : gs.path) {
-            if (floor(vec2.x / cfg.cellSize.x) != randx &&
-                floor(vec2.y / cfg.cellSize.y) != randy) {
-                gs.randomX = randx;
-                gs.randomY = randy;
+        do {
+            for (const Vector2 &vec2 : gs.pxUnitPos) {
+                if (floor(vec2.x / cfg.cellSize.x) == randx &&
+                    floor(vec2.y / cfg.cellSize.y) == randy) {
+                    randx = rand() % cfg.columns;
+                    randy = rand() % cfg.rows;
+                } else {
+                    gs.randomX = randx;
+                    gs.randomY = randy;
+                }
             }
-        }
+        } while (gs.randomX != randx && gs.randomY != randy);
 
         addUnit(gs, cfg);
         gs.ateApple = true;
     }
-    if (gs.pxUnitPos.size() % 2 == 0 && gs.ateApple) {
-        gs.speed += 5;
+    if (gs.ateApple) {
         gs.ateApple = false;
+        if (gs.pxUnitPos.size() % 2 == 0) {
+            gs.speed += 5;
+        }
     }
 }
 
@@ -295,13 +298,36 @@ void setup(GameState &gs, const Config &cfg) {
         {floor(cfg.columns / 2.0f) * cfg.cellSize.x, floor(cfg.rows / 2.0f) * cfg.cellSize.y});
 }
 
+// TODO: (maybe) to make bug free grid expansion, need to expand grid and not just make
+// everything bigger so that snake and apple stay where they are and bodyunits dont
+// misplace. zoom out basicaly
+void doubleGrid(Config &cfg) {
+    // cfg.cellSize = {cfg.cellSize.x / 2, cfg.cellSize.y / 2};
+    cfg.cellSize.x -= cfg.cellSize.x / 2;
+    cfg.cellSize.y -= cfg.cellSize.y / 2;
+    cfg.columns += cfg.columns;
+    cfg.rows += cfg.columns;
+    cfg.unitSize.x -= cfg.unitSize.x / 2;
+    cfg.unitSize.y -= cfg.unitSize.y / 2;
+    cfg.unitGapFromLines.x -= cfg.unitGapFromLines.x / 2;
+    cfg.unitGapFromLines.y -= cfg.unitGapFromLines.y / 2;
+}
+
 int main(void) {
+    // TODO: add static 3d view.
+    Camera3D camera = {};
+    camera.position = (Vector3){10.0f, 10.0f, 10.0f};
+    camera.target = (Vector3){0.0f, 0.0f, 0.0f};
+    camera.up = (Vector3){0.0f, 1.0f, 0.0f};
+    camera.fovy = 45.0f;
+    camera.projection = CAMERA_PERSPECTIVE;
+    Vector3 cubePosition = {0.0f, 0.0f, 0.0f};
 
     // Vector2 windowSize = {((1920.0f / 100) * 62.5), ((1080.0f / 100) * 62.5)};
     Vector2 windowSize = {720, 720};
 
     GameState gs;
-    const Config cfg = makeConfig(windowSize);
+    Config cfg = makeConfig(windowSize);
     UiState uis;
     FrameState fs;
 
@@ -319,6 +345,10 @@ int main(void) {
     //  bool dropDownEditMode = false;
 
     while (true) {
+        if (gs.pxUnitPos.size() == 25) {
+            doubleGrid(cfg);
+            addUnit(gs, cfg);
+        }
 
         // TODO: make playfield size adjustable (choose from)
         //
@@ -357,8 +387,17 @@ int main(void) {
             fs.cellFraction = {fs.cellPosOfHead.x - floorf(fs.cellPosOfHead.x),
                                fs.cellPosOfHead.y - floorf(fs.cellPosOfHead.y)};
 
+            // TODO: add turn presses buffer so that 1 or 2 or maybe 3 turns pressed while snake has
+            // not done the current turn get into a waiting line.
+            // maybe do, if not turned yet butalready pressed new dir key, buffer and change if
+            // pressed again.
+            // eg L; while(!CurrentL){collect next buffer dir}else{aply L};
+
+            // FIX: kinda works but nor rly
             if (!gs.turnPending && moveKeys(gs.pendingMode)) {
                 gs.turnPending = true;
+            } else if (gs.currentMode != gs.pendingMode) {
+                moveKeys(gs.pendingMode);
             }
 
             if (gs.currentMode == MovementMode::moveRight &&
@@ -413,20 +452,20 @@ int main(void) {
             isOob(gs, cfg);
 
             checkSelfCollision(gs, cfg);
+            UpdateCamera(&camera, CAMERA_FREE);
         }
 
         //----------------------------------------------------------------------------------
         BeginDrawing();
         Color myTintSettings = {0, 0, 0, 128};
         Color myTintDead = {0, 0, 0, 170};
-        Color coinBg = {205, 170, 0, 255};
-        Color coinFg = {255, 205, 0, 255};
         // TODO: add connected snake body. make body connected from head to tail.
 
         ClearBackground(BLACK);
-        const Vector2 btn = halfCell(cfg);
+        Vector2 btn = halfCell(cfg);
 
         drawGrid(cfg);
+
         DrawText("press <O> for settings and tutor", btn.x * 24, btn.y * 0.5, 16, WHITE);
         for ([[maybe_unused]] Vector2 vec2 : gs.pxUnitPos) {
             DrawRectangleRounded((Rectangle){vec2.x + cfg.unitGapFromLines.x,
@@ -452,7 +491,8 @@ int main(void) {
         //       gs.pxUnitPos[0].y + cfg.unitGapFromLines.y},
         //
         //      // mid
-        //      {gs.pxUnitPos[0].x + cfg.cellSize.x / 2, gs.pxUnitPos[0].y + cfg.cellSize.y / 2},
+        //      {gs.pxUnitPos[0].x + cfg.cellSize.x / 2, gs.pxUnitPos[0].y + cfg.cellSize.y
+        //      / 2},
         //
         //      // end
         //      {gs.pxUnitPos[0].x + cfg.unitGapFromLines.x + cfg.cellSize.x,
@@ -460,11 +500,8 @@ int main(void) {
         //  };
         // DrawSplineBezierQuadratic(splinePoints, 3, 4.0f, ORANGE);
 
-        DrawCircle(gs.randomX * cfg.cellSize.x + btn.x, gs.randomY * cfg.cellSize.y + btn.y,
-                   btn.x - cfg.unitGapFromLines.x, coinBg);
-        DrawCircleLinesEx(
-            {gs.randomX * cfg.cellSize.x + btn.x, gs.randomY * cfg.cellSize.y + btn.y},
-            btn.x - cfg.unitGapFromLines.x, 5, coinFg);
+        DrawCircle(gs.randomX * cfg.cellSize.x + (cfg.cellSize.x / 2),
+                   gs.randomY * cfg.cellSize.y + (cfg.cellSize.y / 2), cfg.unitSize.x / 2, GREEN);
 
         if (uis.debug) {
             drawDebugInfo(gs, cfg, fs);
@@ -497,6 +534,15 @@ int main(void) {
                 setup(gs, cfg);
             }
         }
+        BeginMode3D(camera);
+
+        DrawCube(cubePosition, 2.0f, 2.0f, 2.0f, RED);
+        DrawCubeWires(cubePosition, 2.0f, 2.0f, 2.0f, MAROON);
+
+        DrawGrid(10, 1.0f);
+
+        EndMode3D();
+
         EndDrawing();
         //----------------------------------------------------------------------------------
     }
